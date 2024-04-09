@@ -142,7 +142,7 @@ class AmethystTrader:
         )
 
         ask_price = self.price + self.mm_spread // 2
-        ask_quantity = self.quantity
+        ask_quantity = -self.quantity
         logger.print(f"SELL {self.product}, {ask_price=}, {ask_quantity=}")
         orders.append(
             Order(self.product, ask_price, ask_quantity)
@@ -154,10 +154,10 @@ class AmethystTrader:
 class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         amethyst_configs = AmethystConfigs(
-            Listing(symbol="AMETHYSTS", product="AMETHYSTS", denomination=1),
-            price=10_000.0,
-            mm_spread=2.0,
-            quantity=5.0,
+            Listing(symbol="AMETHYSTS", product="AMETHYSTS", denomination="SEASHELLS"),
+            price=10_000,
+            mm_spread=2,
+            quantity=5,
         )
         amethyst_trader = AmethystTrader(amethyst_configs)
 
