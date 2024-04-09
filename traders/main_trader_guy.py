@@ -1,6 +1,25 @@
 import json
-from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
+from datamodel import (
+    Listing,
+    Observation,
+    Order,
+    OrderDepth,
+    ProsperityEncoder,
+    Symbol,
+    Trade,
+    TradingState,
+)
 from typing import Any
+
+SEASHELLS = "SEASHELLS"
+AMETHYSTS = "AMETHYSTS"
+STARFRUIT = "STARFRUIT"
+
+POSITION_LIMITS = {
+    AMETHYSTS: 20,
+    STARFRUIT: 20,
+}
+
 
 class Logger:
     def __init__(self) -> None:
@@ -10,25 +29,41 @@ class Logger:
     def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
         self.logs += sep.join(map(str, objects)) + end
 
-    def flush(self, state: TradingState, orders: dict[Symbol, list[Order]], conversions: int, trader_data: str) -> None:
-        base_length = len(self.to_json([
-            self.compress_state(state, ""),
-            self.compress_orders(orders),
-            conversions,
-            "",
-            "",
-        ]))
+    def flush(
+        self,
+        state: TradingState,
+        orders: dict[Symbol, list[Order]],
+        conversions: int,
+        trader_data: str,
+    ) -> None:
+        base_length = len(
+            self.to_json(
+                [
+                    self.compress_state(state, ""),
+                    self.compress_orders(orders),
+                    conversions,
+                    "",
+                    "",
+                ]
+            )
+        )
 
         # We truncate state.traderData, trader_data, and self.logs to the same max. length to fit the log limit
         max_item_length = (self.max_log_length - base_length) // 3
 
-        print(self.to_json([
-            self.compress_state(state, self.truncate(state.traderData, max_item_length)),
-            self.compress_orders(orders),
-            conversions,
-            self.truncate(trader_data, max_item_length),
-            self.truncate(self.logs, max_item_length),
-        ]))
+        print(
+            self.to_json(
+                [
+                    self.compress_state(
+                        state, self.truncate(state.traderData, max_item_length)
+                    ),
+                    self.compress_orders(orders),
+                    conversions,
+                    self.truncate(trader_data, max_item_length),
+                    self.truncate(self.logs, max_item_length),
+                ]
+            )
+        )
 
         self.logs = ""
 
@@ -47,11 +82,15 @@ class Logger:
     def compress_listings(self, listings: dict[Symbol, Listing]) -> list[list[Any]]:
         compressed = []
         for listing in listings.values():
-            compressed.append([listing["symbol"], listing["product"], listing["denomination"]])
+            compressed.append(
+                [listing["symbol"], listing["product"], listing["denomination"]]
+            )
 
         return compressed
 
-    def compress_order_depths(self, order_depths: dict[Symbol, OrderDepth]) -> dict[Symbol, list[Any]]:
+    def compress_order_depths(
+        self, order_depths: dict[Symbol, OrderDepth]
+    ) -> dict[Symbol, list[Any]]:
         compressed = {}
         for symbol, order_depth in order_depths.items():
             compressed[symbol] = [order_depth.buy_orders, order_depth.sell_orders]
@@ -62,14 +101,16 @@ class Logger:
         compressed = []
         for arr in trades.values():
             for trade in arr:
-                compressed.append([
-                    trade.symbol,
-                    trade.price,
-                    trade.quantity,
-                    trade.buyer,
-                    trade.seller,
-                    trade.timestamp,
-                ])
+                compressed.append(
+                    [
+                        trade.symbol,
+                        trade.price,
+                        trade.quantity,
+                        trade.buyer,
+                        trade.seller,
+                        trade.timestamp,
+                    ]
+                )
 
         return compressed
 
@@ -103,7 +144,8 @@ class Logger:
         if len(value) <= max_length:
             return value
 
-        return value[:max_length - 3] + "..."
+        return value[: max_length - 3] + "..."
+
 
 logger = Logger()
 
@@ -137,40 +179,42 @@ class AmethystTrader:
         bid_price = self.price - self.mm_spread // 2
         bid_quantity = self.quantity
         logger.print(f"BUY {self.product}, {bid_price=}, {bid_quantity=}")
-        orders.append(
-            Order(self.product, bid_price, bid_quantity)
-        )
+        orders.append(Order(self.product, bid_price, bid_quantity))
 
         ask_price = self.price + self.mm_spread // 2
         ask_quantity = -self.quantity
         logger.print(f"SELL {self.product}, {ask_price=}, {ask_quantity=}")
-        orders.append(
-            Order(self.product, ask_price, ask_quantity)
-        )
-        
+        orders.append(Order(self.product, ask_price, ask_quantity))
+
         return orders, conversions, trader_data
 
 
 class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        # initialize configs
         amethyst_configs = AmethystConfigs(
-            Listing(symbol="AMETHYSTS", product="AMETHYSTS", denomination="SEASHELLS"),
+            Listing(symbol=AMETHYSTS, product=AMETHYSTS, denomination=SEASHELLS),
             price=10_000,
             mm_spread=2,
             quantity=5,
         )
+
+        # initialize traders
         amethyst_trader = AmethystTrader(amethyst_configs)
 
+        # run traders
+        amethyst_orders, amethyst_conversions, amethyst_trader_data = (
+            amethyst_trader.run(state)
+        )
+
+        # create orders, conversions and trader_data
         orders = {}
         conversions = 0
         trader_data = ""
 
-        amethyst_orders, amethyst_conversions, amethyst_trader_data = amethyst_trader.run(state)
-
-        orders["AMETHYSTS"] = amethyst_orders
+        orders[AMETHYSTS] = amethyst_orders
         conversions += amethyst_conversions
         trader_data += amethyst_trader_data
-        
 
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data

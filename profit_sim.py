@@ -12,7 +12,7 @@ def generate_fish_value():
     # CDF: F(x) = x^2/10000
     # Inverse CDF: F^-1(x) = 100*sqrt(x)
     p = random.random()
-    val = 100 * (p ** 0.5)
+    val = 100 * (p**0.5)
     return 900 + val
 
 
@@ -27,13 +27,15 @@ def test_generate_fish_value():
     for val in vals:
         bucket = int((val - 900) // 10)
         buckets[bucket] += 1
-    
+
     actual_cdf = 0.0
     for i in range(10):
         fraction = buckets[i] / iterations
         actual_cdf += fraction
-        expected_cdf = ((i + 1) * 10) ** 2 / 10000 
-        print(f"Fraction: {fraction}, Actual CDF: {actual_cdf}, Expected CDF: {expected_cdf}")
+        expected_cdf = ((i + 1) * 10) ** 2 / 10000
+        print(
+            f"Fraction: {fraction}, Actual CDF: {actual_cdf}, Expected CDF: {expected_cdf}"
+        )
 
 
 def profit_ev_and_std(a, b, iterations):
@@ -47,7 +49,7 @@ def profit_ev_and_std(a, b, iterations):
             profits.append(1000 - b)
         else:
             profits.append(0)
-    
+
     ev = sum(profits) / iterations
     stdev = statistics.stdev(profits)
     return ev, stdev
@@ -79,7 +81,7 @@ def simulate():
 def best_value():
     with open("profit_sim.json", "r") as f:
         data = json.load(f)
-    
+
     ev_threshold = 19
 
     best_a = None
@@ -98,8 +100,10 @@ def best_value():
             best_ev = item["EV"]
             best_std = item["STD"]
             best_sharpe = item["Sharpe"]
-    
-    print(f"Best EV: {best_ev}, std: {best_std}, sharpe: {best_sharpe}, A: {best_a}, B: {best_b}")
+
+    print(
+        f"Best EV: {best_ev}, std: {best_std}, sharpe: {best_sharpe}, A: {best_a}, B: {best_b}"
+    )
 
 
 if __name__ == "__main__":
