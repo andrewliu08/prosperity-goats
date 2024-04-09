@@ -113,5 +113,6 @@ class Trader:
         conversions = 0
         trader_data = ""
 
+        logger.print(state.toJSON())
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data
