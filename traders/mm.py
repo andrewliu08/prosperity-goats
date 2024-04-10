@@ -170,19 +170,28 @@ class AmethystTrader:
         self.price = configs.price
         self.mm_spread = configs.mm_spread
         self.quantity = configs.quantity
+    
+    def calc_reservation_price(self, position: int) -> int:
+        reservation_price = self.price - int(position * 0.1)
+        return reservation_price
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = []
         conversions = 0
         trader_data = ""
 
-        bid_price = self.price - self.mm_spread // 2
-        bid_quantity = self.quantity
+        position = state.position.get(self.product, 0)
+        reservation_price = self.calc_reservation_price(
+            state.position.get(self.product, 0)
+        )
+
+        bid_price = reservation_price - self.mm_spread // 2
+        bid_quantity = min(self.quantity, POSITION_LIMITS[AMETHYSTS] - position)
         logger.print(f"BUY {self.product}, {bid_price=}, {bid_quantity=}")
         orders.append(Order(self.product, bid_price, bid_quantity))
 
-        ask_price = self.price + self.mm_spread // 2
-        ask_quantity = -self.quantity
+        ask_price = reservation_price + self.mm_spread // 2
+        ask_quantity = max(-self.quantity, -POSITION_LIMITS[AMETHYSTS] - position)
         logger.print(f"SELL {self.product}, {ask_price=}, {ask_quantity=}")
         orders.append(Order(self.product, ask_price, ask_quantity))
 
@@ -195,8 +204,8 @@ class Trader:
         amethyst_configs = AmethystConfigs(
             Listing(symbol=AMETHYSTS, product=AMETHYSTS, denomination=SEASHELLS),
             price=10_000,
-            mm_spread=4,
-            quantity=5,
+            mm_spread=2,
+            quantity=40,
         )
 
         # initialize traders
