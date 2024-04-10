@@ -1,4 +1,5 @@
 import json
+from collections import OrderedDict
 from datamodel import (
     Listing,
     Observation,
@@ -14,6 +15,8 @@ from typing import Any, Optional
 SEASHELLS = "SEASHELLS"
 AMETHYSTS = "AMETHYSTS"
 STARFRUIT = "STARFRUIT"
+
+PRODUCTS = [AMETHYSTS, STARFRUIT]
 
 POSITION_LIMITS = {
     AMETHYSTS: 20,
@@ -150,6 +153,127 @@ class Logger:
 logger = Logger()
 
 
+class Manager:
+    def __init__(self, product, state):
+        self.product = product
+        self.state = state
+        self.orders = []
+
+    def get_position(self):
+        return self.state.position.get(self.product, 0)
+
+    def get_buy_orders(self):
+        """
+        Returns an ordered and sorted (from best to worst) dictionary of buy orders for the product.
+        """
+        return OrderedDict(
+            sorted(
+                self.state.order_depths[self.product].buy_orders.items(), reverse=True
+            )
+        )
+
+    def get_sell_orders(self):
+        """
+        Returns an ordered and sorted (from best to worst) dictionary of sell orders for the product.
+        """
+        return OrderedDict(
+            sorted(self.state.order_depths[self.product].sell_orders.items())
+        )
+
+    def get_best_buy_order(self):
+        """
+        Returns the (price, quantity) for the best buy order for the product.
+        """
+        buy_orders = self.get_buy_orders()
+        assert len(buy_orders) > 0, "no buy orders found"
+
+        return list(buy_orders.items())[0]
+
+    def get_best_sell_order(self):
+        """
+        Returns the (price, quantity) for the best sell order for the product.
+        """
+        sell_orders = self.get_sell_orders()
+        assert len(sell_orders) > 0, "no sell orders found"
+
+        return list(sell_orders.items())[0]
+
+    def place_order(self, price, quantity):
+        """
+        DO NOT USE. Use place_buy_order or place_sell_order instead.
+        Place an order for the product with the given price and quantity.
+        """
+        assert quantity != 0, "cannot place an order with quantity 0"
+
+        if quantity > 0:
+            logger.print(f"BUY {self.product}, {price=}, {quantity=}")
+        else:
+            logger.print(f"SELL {self.product}, {price=}, {quantity=}")
+        self.orders.append(Order(self.product, price, quantity))
+
+    def place_buy_order(self, price, quantity):
+        assert quantity > 0, f"buy order quantity must be positive. {quantity=}"
+        assert (
+            quantity <= self.max_buy_amount()
+        ), f"buy order quantity exceeds position limit. {quantity=}, {self.max_buy_amount()=}"
+
+        return self.place_order(price, quantity)
+
+    def place_sell_order(self, price, quantity):
+        assert quantity < 0, f"sell order quantity must be negative. {quantity=}"
+        assert (
+            quantity >= self.max_sell_amount()
+        ), f"sell order quantity exceeds position limit. {quantity=}, {self.max_sell_amount()=}"
+
+        return self.place_order(price, quantity)
+
+    def pending_orders(self):
+        ret = [order for order in self.orders if order.quantity != 0]
+        self.orders = []
+        return ret
+
+    def max_buy_amount(self, position=None):
+        """
+        Returns the maximum quantity you can buy.
+        position: The position you want to calculate the maximum buy amount for. If None, the current position is used.
+        """
+        if position is None:
+            position = self.get_position()
+        return POSITION_LIMITS[self.product] - position
+
+    def max_sell_amount(self, position=None):
+        """
+        Returns the minimum quantity you can sell (since it is a negative number).
+        position: The position you want to calculate the minimum sell amount for. If None, the current position is used.
+        """
+        if position is None:
+            position = self.get_position()
+        return -POSITION_LIMITS[self.product] - position
+
+    def get_mid_price(self):
+        """
+        Returns (best_buy_price + best_sell_price) / 2 rounded to the nearest int.
+        """
+        best_buy_order = self.get_best_buy_order()
+        best_sell_order = self.get_best_sell_order()
+        return round((best_buy_order[0] + best_sell_order[0]) / 2.0)
+
+    def get_VWAP(self):
+        """
+        Returns the VWAP (weighted average of price) rounded to the nearest int.
+        """
+        buy_orders = self.get_buy_orders()
+        sell_orders = self.get_sell_orders()
+        total, volume = 0, 0
+        for price, qty in buy_orders.items():
+            total += price * qty
+            volume += qty
+        for price, qty in sell_orders.items():
+            total += price * -qty
+            volume += -qty
+        return round(total / volume)
+
+
 class AmethystConfigs:
     def __init__(
         self,
@@ -157,11 +281,13 @@ class AmethystConfigs:
         price: int,
         mm_spread: int,
         quantity: int,
+        manager: Manager,
     ):
         self.listing = listing
         self.price = price
         self.mm_spread = mm_spread
         self.quantity = quantity
+        self.manager = manager
 
 
 class AmethystTrader:
@@ -170,34 +296,26 @@ class AmethystTrader:
         self.price = configs.price
         self.mm_spread = configs.mm_spread
         self.quantity = configs.quantity
+        self.manager = configs.manager
 
     def calc_reservation_price(self, position: int) -> int:
         reservation_price = self.price - int(position * 0.1)
         return reservation_price
 
-    def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
-        orders = []
-        conversions = 0
-        trader_data = ""
-
-        position = state.position.get(self.product, 0)
-        reservation_price = self.calc_reservation_price(
-            state.position.get(self.product, 0)
-        )
+    def run(self, state: TradingState) -> None:
+        bid_quantity_limit = self.manager.max_buy_amount()
+        ask_quantity_limit = self.manager.max_sell_amount()
+        reservation_price = self.calc_reservation_price(self.manager.get_position())
 
         bid_price = reservation_price - self.mm_spread // 2
-        bid_quantity = min(self.quantity, POSITION_LIMITS[AMETHYSTS] - position)
+        bid_quantity = bid_quantity_limit
         if bid_quantity > 0:
-            logger.print(f"BUY {self.product}, {bid_price=}, {bid_quantity=}")
-            orders.append(Order(self.product, bid_price, bid_quantity))
+            self.manager.place_buy_order(bid_price, bid_quantity)
 
         ask_price = reservation_price + self.mm_spread // 2
-        ask_quantity = max(-self.quantity, -POSITION_LIMITS[AMETHYSTS] - position)
+        ask_quantity = ask_quantity_limit
         if ask_quantity < 0:
-            logger.print(f"SELL {self.product}, {ask_price=}, {ask_quantity=}")
-            orders.append(Order(self.product, ask_price, ask_quantity))
-
-        return orders, conversions, trader_data
+            self.manager.place_sell_order(ask_price, ask_quantity)
 
     # def run1(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
     #     orders = []
@@ -237,10 +355,12 @@ class StarfruitConfigs:
         listing: Listing,
         mm_spread: int,
         quantity: int,
+        manager: Manager,
     ):
         self.listing = listing
         self.mm_spread = mm_spread
         self.quantity = quantity
+        self.manager = manager
 
 
 class StarfruitTrader:
@@ -248,88 +368,50 @@ class StarfruitTrader:
         self.product = configs.listing.product
         self.mm_spread = configs.mm_spread
         self.quantity = configs.quantity
+        self.manager = configs.manager
 
     def calc_reservation_price(self, price: int, position: int) -> int:
         reservation_price = price - int(position * 0.09)
         return reservation_price
-    
-    def vwap(self, state: TradingState) -> Optional[float]:
-        order_depths = state.order_depths.get(self.product)
-        if order_depths is None:
-            return None
-        
-        buy_orders = order_depths.buy_orders
-        sell_orders = order_depths.sell_orders
-        total, volume = 0, 0
-        for price, qty in buy_orders.items():
-            total += price * qty
-            volume += qty
-        for price, qty in sell_orders.items():
-            total += price * -qty
-            volume += -qty
 
-        if volume == 0:
-            return None
-        return total / volume
-    
-    def highest_bid(self, state: TradingState) -> Optional[int]:
-        buy_orders = state.order_depths[self.product].buy_orders
-        return None if len(buy_orders) == 0 else max(buy_orders.keys())
-
-    def lowest_ask(self, state: TradingState) -> Optional[int]:
-        sell_orders = state.order_depths[self.product].sell_orders
-        return None if len(sell_orders) == 0 else min(sell_orders.keys())
-    
-    def mid_price(self, state: TradingState) -> Optional[float]:
-        best_bid = self.highest_bid(state)
-        best_ask = self.lowest_ask(state)
-        if best_bid is None or best_ask is None:
-            return None
-        return (best_bid + best_ask) / 2
-
-
-    def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
-        orders = []
-        conversions = 0
-        trader_data = ""
-
-        position = state.position.get(self.product, 0)
-        mid_price = self.vwap(state)
+    def run(self, state: TradingState) -> None:
+        mid_price = self.manager.get_VWAP()
         if mid_price is None:
-            return orders, conversions, trader_data
+            return
         reservation_price = self.calc_reservation_price(
-            int(mid_price),
-            state.position.get(self.product, 0),
+            int(mid_price), self.manager.get_position()
         )
+        bid_quantity_limit = self.manager.max_buy_amount()
+        ask_quantity_limit = self.manager.max_sell_amount()
 
         bid_price = reservation_price - self.mm_spread // 2
-        bid_quantity = min(self.quantity, POSITION_LIMITS[STARFRUIT] - position)
+        bid_quantity = bid_quantity_limit
         if bid_quantity > 0:
-            logger.print(f"BUY {self.product}, {bid_price=}, {bid_quantity=}")
-            orders.append(Order(self.product, bid_price, bid_quantity))
+            self.manager.place_buy_order(bid_price, bid_quantity)
 
         ask_price = reservation_price + self.mm_spread // 2
-        ask_quantity = max(-self.quantity, -POSITION_LIMITS[STARFRUIT] - position)
+        ask_quantity = ask_quantity_limit
         if ask_quantity < 0:
-            logger.print(f"SELL {self.product}, {ask_price=}, {ask_quantity=}")
-            orders.append(Order(self.product, ask_price, ask_quantity))
-
-        return orders, conversions, trader_data
+            self.manager.place_sell_order(ask_price, ask_quantity)
 
 
 class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         # initialize configs
+        managers = {product: Manager(product, state) for product in PRODUCTS}
+
         amethyst_configs = AmethystConfigs(
             Listing(symbol=AMETHYSTS, product=AMETHYSTS, denomination=SEASHELLS),
             price=10_000,
             mm_spread=2,
             quantity=40,
+            manager=managers[AMETHYSTS],
         )
         starfruit_configs = StarfruitConfigs(
             Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
             mm_spread=4,
             quantity=30,
+            manager=managers[STARFRUIT],
         )
 
         # initialize traders
@@ -337,28 +419,16 @@ class Trader:
         starfruit_trader = StarfruitTrader(starfruit_configs)
 
         # run traders
-        # (
-        #     amethyst_orders,
-        #     amethyst_conversions,
-        #     amethyst_trader_data,
-        # ) = amethyst_trader.run(state)
-        (
-            starfruit_orders,
-            starfruit_conversions,
-            starfruit_trader_data,
-        ) = starfruit_trader.run(state)
+        amethyst_trader.run(state)
+        starfruit_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}
         conversions = 0
         trader_data = ""
 
-        # orders[AMETHYSTS] = amethyst_orders
-        # conversions += amethyst_conversions
-        # trader_data += amethyst_trader_data
-        orders[STARFRUIT] = starfruit_orders
-        conversions += starfruit_conversions
-        trader_data += starfruit_trader_data
+        orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
+        orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
 
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data
