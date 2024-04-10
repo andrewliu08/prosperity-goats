@@ -71,16 +71,26 @@ features['weighted_ask_price'] = (
     df['ask_price_3'].fillna(0) * df['ask_volume_3'].fillna(0)
 ) / total_ask_volume
 
+# Weighted Price: Weighted price for bids and asks
+features['weighted_trade_price'] = (
+    df['bid_price_1'].fillna(0) * df['bid_volume_1'].fillna(0) +
+    df['bid_price_2'].fillna(0) * df['bid_volume_2'].fillna(0) +
+    df['bid_price_3'].fillna(0) * df['bid_volume_3'].fillna(0) +
+    df['ask_price_1'].fillna(0) * df['ask_volume_1'].fillna(0) +
+    df['ask_price_2'].fillna(0) * df['ask_volume_2'].fillna(0) +
+    df['ask_price_3'].fillna(0) * df['ask_volume_3'].fillna(0)
+) / (total_bid_volume + total_ask_volume)
+
 previous_timesteps = 5
 future_timesteps = 1
 # Previous Timesteps:
 for lag in range(0, previous_timesteps):
-    features[f'lag_{lag}'] = df['mid_price'].shift(lag)
+    features[f'lag_{lag}'] = features['weighted_trade_price'].shift(lag)
 
-features['ema_mid_price'] = df['mid_price'].ewm(span=10, adjust=False).mean()
+# features['ema_mid_price'] = df['mid_price'].ewm(span=10, adjust=False).mean()
 
 # Future Timesteps:
-features['future'] = df['mid_price'].shift(-future_timesteps)
+features['future'] = features['weighted_trade_price'].shift(-future_timesteps)
 features = features.dropna()
 
 # print(features.tail())
