@@ -184,18 +184,37 @@ class AmethystTrader:
         orders = []
         conversions = 0
         trader_data = ""
-        buy_book = [20]
+        buy_book = [12,8]
         #best split so far was like[6,7,7]
-        #best so far was [20], adj  =0, 14.7k
+        #best so far was [20], adj  =0, 14.7k, gets 1.29k on official
+        #[10, 10] adj = 0, gets 14.5k
+        #[15,5] adj = 0, gets 14.7k
+
+        #[20], spread = 1, adj = linear, gets 14.9 across 2 days, gets 1.15k on official
+            #adj is [-2,-2,-1,-1,0]
+        #[20], spread = 1, adj = linear, gets 23k across 3 days, gets 1.16k on official
+            #adj is [-2,-1,-1,0]
+        #[10,10], spread = 1, adj = linear, gets 23k across 3 days, gets 1.16k on official
+            #adj is [-2,-1,-1,0]
         
+        #[10,10,15], spread = 1, adj = linear, gets 23.2k across 3 days, gets 1.17k on official
+            #adj is [-2,-1,-1,-1,0]
+        #[10,10,15], spread = 1, adj = linear, gets 23.2k across 3 days, gets 1.17k on official
+            #adj is [-2,-1,-1,-1,0,0]
+        #[20], spread = 1, adj = linear, gets 15.5k across 2 days, gets 1.17k on official
+            #adj is [-2,-1,-1,-1,0,0]
+        #[20], spread = 1, adj = linear, gets 15.6k across 2 days, gets 1.19k on official
+            #adj is [-1,-1,-1,0,0]
+        #[12,8] is also a promising split
+                
+
         position = state.position.get(self.product, 0)
         limit = POSITION_LIMITS[self.product]
         buy_quota = limit-position
         sell_quota = -limit-position
-        spread = 2
+        spread = 1
 
-        adj = 0
-        #self.position_adjustment([-2,-2,-1,-1,0,1,1,2,2],position)
+        adj = self.position_adjustment([-1,-1,-1,0,1,1,1],position)
         bp = 10000 - spread - adj
         sp = 10000 + spread - adj
         
@@ -205,7 +224,7 @@ class AmethystTrader:
             orders.append(Order(self.product, bp-i,q))
             buy_quota-=q
         if buy_quota > 0:
-            orders.append(Order(self.product,bp-len(buy_book),buy_quota))
+            orders.append(Order(self.product,bp-len(buy_book)+1,buy_quota))
 
 
         for i,qty in enumerate (buy_book):
@@ -213,7 +232,7 @@ class AmethystTrader:
             orders.append(Order(self.product, sp+i,q))
             sell_quota-=q
         if sell_quota < 0:
-            orders.append(Order(self.product,sp+len(buy_book),sell_quota))
+            orders.append(Order(self.product,sp+len(buy_book)-1,sell_quota))
         return orders, conversions, trader_data
 
 
