@@ -119,7 +119,7 @@ features['future'] = features['weighted_trade_price'].shift(-future_timesteps)
 features = features.dropna()
 
 # print(features.tail())
-selected_columns=['log_returns', 'ma5', 'ma20','weighted_bid_price','weighted_ask_price']
+selected_columns=['log_returns', 'ma5', 'ma20']
 X = features[selected_columns]
 # X = features.drop(columns=['future'])
 y = features['future']
@@ -203,6 +203,7 @@ def plot_coefficients(model, feature_names):
     
     average_diff = weighted_trade_price_diff.mean()
     print(f"Average Difference of the Weighted Trade Price (VWAP) for Consecutive Entries: {average_diff}")
+    print("Intercept:", model.intercept_)
 
 # Ensure to pass the actual y_test and predictions arrays to this function when calling it
 plot_coefficients(model, X.columns)
