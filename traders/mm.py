@@ -280,13 +280,13 @@ class AmethystConfigs:
         listing: Listing,
         price: int,
         mm_spread: int,
-        quantity: int,
+        inventory_adjustment: float,
         manager: Manager,
     ):
         self.listing = listing
         self.price = price
         self.mm_spread = mm_spread
-        self.quantity = quantity
+        self.inventory_adjustment = inventory_adjustment
         self.manager = manager
 
 
@@ -295,58 +295,27 @@ class AmethystTrader:
         self.product = configs.listing.product
         self.price = configs.price
         self.mm_spread = configs.mm_spread
-        self.quantity = configs.quantity
+        self.inventory_adjustment = configs.inventory_adjustment
         self.manager = configs.manager
 
     def calc_reservation_price(self, position: int) -> int:
-        reservation_price = self.price - int(position * 0.1)
+        reservation_price = self.price - int(position * self.inventory_adjustment)
         return reservation_price
 
     def run(self, state: TradingState) -> None:
-        bid_quantity_limit = self.manager.max_buy_amount()
-        ask_quantity_limit = self.manager.max_sell_amount()
+        buy_quantity_limit = self.manager.max_buy_amount()
+        sell_quantity_limit = self.manager.max_sell_amount()
         reservation_price = self.calc_reservation_price(self.manager.get_position())
 
         bid_price = reservation_price - self.mm_spread // 2
-        bid_quantity = bid_quantity_limit
+        bid_quantity = buy_quantity_limit
         if bid_quantity > 0:
             self.manager.place_buy_order(bid_price, bid_quantity)
 
         ask_price = reservation_price + self.mm_spread // 2
-        ask_quantity = ask_quantity_limit
+        ask_quantity = sell_quantity_limit
         if ask_quantity < 0:
             self.manager.place_sell_order(ask_price, ask_quantity)
-
-    # def run1(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
-    #     orders = []
-    #     conversions = 0
-    #     trader_data = ""
-
-    #     position = state.position.get(self.product, 0)
-
-    #     bid_quantity = min(self.quantity, POSITION_LIMITS[AMETHYSTS] - position)
-    #     ask_quantity = max(-self.quantity, -POSITION_LIMITS[AMETHYSTS] - position)
-
-    #     bid_prices = sorted(state.order_depths[AMETHYSTS].buy_orders.keys())
-    #     if len(bid_prices) == 0:
-    #         bid_price = self.price - self.mm_spread // 2
-    #     else:
-    #         bid_price = bid_prices[-1] + 2
-
-    #     ask_prices = sorted(state.order_depths[AMETHYSTS].sell_orders.keys())
-    #     if len(ask_prices) == 0:
-    #         ask_price = self.price + self.mm_spread // 2
-    #     else:
-    #         ask_price = ask_prices[0] - 1
-
-    #     if bid_quantity > 0:
-    #         logger.print(f"BUY {self.product}, {bid_price=}, {bid_quantity=}")
-    #         orders.append(Order(self.product, bid_price, bid_quantity))
-    #     if ask_quantity < 0:
-    #         logger.print(f"SELL {self.product}, {ask_price=}, {ask_quantity=}")
-    #         orders.append(Order(self.product, ask_price, ask_quantity))
-
-    #     return orders, conversions, trader_data
 
 
 class StarfruitConfigs:
@@ -354,12 +323,12 @@ class StarfruitConfigs:
         self,
         listing: Listing,
         mm_spread: int,
-        quantity: int,
+        inventory_adjustment: float,
         manager: Manager,
     ):
         self.listing = listing
         self.mm_spread = mm_spread
-        self.quantity = quantity
+        self.inventory_adjustment = inventory_adjustment
         self.manager = manager
 
 
@@ -367,11 +336,11 @@ class StarfruitTrader:
     def __init__(self, configs: StarfruitConfigs) -> None:
         self.product = configs.listing.product
         self.mm_spread = configs.mm_spread
-        self.quantity = configs.quantity
+        self.inventory_adjustment = configs.inventory_adjustment
         self.manager = configs.manager
 
     def calc_reservation_price(self, price: int, position: int) -> int:
-        reservation_price = price - int(position * 0.09)
+        reservation_price = price - int(position * self.inventory_adjustment)
         return reservation_price
 
     def run(self, state: TradingState) -> None:
@@ -381,16 +350,16 @@ class StarfruitTrader:
         reservation_price = self.calc_reservation_price(
             int(mid_price), self.manager.get_position()
         )
-        bid_quantity_limit = self.manager.max_buy_amount()
-        ask_quantity_limit = self.manager.max_sell_amount()
+        buy_quantity_limit = self.manager.max_buy_amount()
+        sell_quantity_limit = self.manager.max_sell_amount()
 
         bid_price = reservation_price - self.mm_spread // 2
-        bid_quantity = bid_quantity_limit
+        bid_quantity = buy_quantity_limit
         if bid_quantity > 0:
             self.manager.place_buy_order(bid_price, bid_quantity)
 
         ask_price = reservation_price + self.mm_spread // 2
-        ask_quantity = ask_quantity_limit
+        ask_quantity = sell_quantity_limit
         if ask_quantity < 0:
             self.manager.place_sell_order(ask_price, ask_quantity)
 
@@ -404,13 +373,13 @@ class Trader:
             Listing(symbol=AMETHYSTS, product=AMETHYSTS, denomination=SEASHELLS),
             price=10_000,
             mm_spread=2,
-            quantity=40,
+            inventory_adjustment=0.1,
             manager=managers[AMETHYSTS],
         )
         starfruit_configs = StarfruitConfigs(
             Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
             mm_spread=4,
-            quantity=30,
+            inventory_adjustment=0.09,
             manager=managers[STARFRUIT],
         )
 
