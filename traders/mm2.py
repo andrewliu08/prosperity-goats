@@ -336,22 +336,38 @@ class AmethystTrader:
         orders = []
         conversions = 0
         trader_data = ""
-        
-        position = state.position.get(self.product, 0)
-        buy_quota = self.manager.max_buy_amount()
-        sell_quota = self.manager.max_sell_amount()
-        
-        buy_book = [12,8]
-        spread = 1
-        #spread of 0 seems to be better for day -2, 1 better for day -1, and day 0
-        adj = self.position_adjustment([-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,1,1,1,1,1,1,1,1],position)
-        
-        bp = 10000 - spread - adj
-        sp = 10000 + spread - adj
-        mp = 100000
+        mp = 10000
         
         # if inventory is taking too long or too short, take wtv order first to help rebalance
         
+        buy_orders = self.manager.get_buy_orders()
+        sell_orders = self.manager.get_sell_orders()
+
+        buy_quota = self.manager.max_buy_amount()
+        sell_quota = self.manager.max_sell_amount()
+
+        for price,qty in buy_orders.items(): #qty is positive, but we are trying to sell
+            if price > mp + 1 and qty>0:
+                q = max(-qty, sell_quota)
+                if q!=0:
+                    self.manager.place_sell_order(price,q)
+                sell_quota -= q
+        
+        for price,qty in sell_orders.items():
+            if price < mp -1 and qty<0:
+                q = min(-qty,buy_quota)
+                if q!=0:
+                    self.manager.place_buy_order(price,q)
+                buy_quota -= q
+        
+
+        buy_book = [12,8]
+        spread = 1
+        #spread of 0 seems to be better for day -2, 1 better for day -1, and day 0
+        adj = self.position_adjustment([-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,1,1,1,1,1,1,1,1],self.manager.get_position())
+        
+        bp = 10000 - spread - adj
+        sp = 10000 + spread - adj
 
         for i,qty in enumerate (buy_book):
             q = min(qty, buy_quota)
@@ -369,7 +385,6 @@ class AmethystTrader:
             sell_quota-=q
         if sell_quota < 0:
             self.manager.place_sell_order(sp+len(buy_book),sell_quota)
-        return orders, conversions, trader_data
 
 
 
