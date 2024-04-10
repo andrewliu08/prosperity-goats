@@ -163,21 +163,27 @@ class Manager:
 
     def get_position(self) -> int:
         return self.state.position.get(self.product, 0)
-    
+
     def get_buy_orders(self) -> OrderedDict[int, int]:
         """
         Returns the (price, quantity) of buy orders for the product.
         Returns an OrderedDict that's sorted based on price (from best to worst).
         """
-        return OrderedDict(sorted(self.state.order_depths[self.product].buy_orders.items(), reverse=True))
-    
+        return OrderedDict(
+            sorted(
+                self.state.order_depths[self.product].buy_orders.items(), reverse=True
+            )
+        )
+
     def get_sell_orders(self) -> OrderedDict[int, int]:
         """
         Returns the (price, quantity) of sell orders for the product.
         Returns an OrderedDict that's sorted based on price (from best to worst).
         """
-        return OrderedDict(sorted(self.state.order_depths[self.product].sell_orders.items()))
-    
+        return OrderedDict(
+            sorted(self.state.order_depths[self.product].sell_orders.items())
+        )
+
     def get_best_buy_order(self) -> Optional[tuple[int, int]]:
         """
         Returns the price, quantity for the best buy order for the product.
@@ -187,7 +193,7 @@ class Manager:
             return None
 
         return list(buy_orders.items())[0]
-    
+
     def get_best_sell_order(self) -> Optional[tuple[int, int]]:
         """
         Returns the (price, quantity) for the best sell order for the product.
@@ -197,7 +203,7 @@ class Manager:
             return None
 
         return list(sell_orders.items())[0]
-    
+
     def place_order(self, price: int, quantity: int) -> None:
         """
         DO NOT USE. Use place_buy_order or place_sell_order instead.
@@ -210,25 +216,29 @@ class Manager:
         else:
             logger.print(f"SELL {self.product}, {price=}, {quantity=}")
         self.orders.append(Order(self.product, price, quantity))
-    
+
     def place_buy_order(self, price: int, quantity: int) -> None:
         assert quantity > 0, f"buy order quantity must be positive. {quantity=}"
-        assert quantity <= self.max_buy_amount(), f"buy order quantity exceeds position limit. {quantity=}, {self.max_buy_amount()=}"
+        assert (
+            quantity <= self.max_buy_amount()
+        ), f"buy order quantity exceeds position limit. {quantity=}, {self.max_buy_amount()=}"
 
         self.place_order(price, quantity)
-    
+
     def place_sell_order(self, price: int, quantity: int) -> None:
         assert quantity < 0, f"sell order quantity must be negative. {quantity=}"
-        assert quantity >= self.max_sell_amount(), f"sell order quantity exceeds position limit. {quantity=}, {self.max_sell_amount()=}"
+        assert (
+            quantity >= self.max_sell_amount()
+        ), f"sell order quantity exceeds position limit. {quantity=}, {self.max_sell_amount()=}"
 
         self.place_order(price, quantity)
-    
+
     def pending_orders(self) -> list[Order]:
         ret = [order for order in self.orders if order.quantity != 0]
         self.orders = []
         return ret
 
-    def max_buy_amount(self, position: Optional[int]=None) -> int:
+    def max_buy_amount(self, position: Optional[int] = None) -> int:
         """
         Returns the maximum quantity you can buy.
         position: The position you want to calculate the maximum buy amount for. If None, the current position is used.
@@ -236,8 +246,8 @@ class Manager:
         if position is None:
             position = self.get_position()
         return POSITION_LIMITS[self.product] - position
-    
-    def max_sell_amount(self, position: Optional[int]=None) -> int:
+
+    def max_sell_amount(self, position: Optional[int] = None) -> int:
         """
         Returns the minimum quantity you can sell (since it is a negative number).
         position: The position you want to calculate the minimum sell amount for. If None, the current position is used.
@@ -245,7 +255,7 @@ class Manager:
         if position is None:
             position = self.get_position()
         return -POSITION_LIMITS[self.product] - position
-    
+
     def get_mid_price(self) -> Optional[int]:
         """
         Returns (best_buy_price + best_sell_price) / 2 rounded to the nearest int.
@@ -260,7 +270,7 @@ class Manager:
         if best_sell_order is None:
             return best_buy_order[0]
         return round((best_buy_order[0] + best_sell_order[0]) / 2.0)
-    
+
     def get_VWAP(self) -> Optional[int]:
         """
         Returns the VWAP (weighted average of price) rounded to the nearest int.
