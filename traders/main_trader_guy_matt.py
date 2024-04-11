@@ -365,7 +365,7 @@ class StarfruitTrader:
                         total_buy_amount += buy_amount
 
         reservation_price = self.calc_reservation_price(
-            int(mid_price), self.manager.get_position()
+            int(future_price if X != [] else mid_price), self.manager.get_position()
         )
         bid_price = reservation_price - self.mm_spread // 2
         bid_quantity = max_buy_amount - total_buy_amount
@@ -387,10 +387,7 @@ class StarfruitTrader:
                     if sell_amount < 0:
                         self.manager.place_sell_order(price, sell_amount)
                         total_sell_amount += sell_amount
-        
-        reservation_price = self.calc_reservation_price(
-            int(mid_price), self.manager.get_position()
-        )
+
         ask_price = bid_price + self.mm_spread 
         ask_quantity = max_sell_amount - total_sell_amount
         if ask_quantity < 0:
