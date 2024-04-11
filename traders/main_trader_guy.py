@@ -9,7 +9,7 @@ from datamodel import (
     Trade,
     TradingState,
 )
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from collections import OrderedDict
 
 Product = str
@@ -156,6 +156,8 @@ class Manager:
         self.product = product
         self.state = state
         self.orders = []
+        self.trader_data: Dict[str, Any] = json.loads(self.state.traderData) if self.state.traderData else {}
+        self.new_trader_data: Dict[str, Any] = {}
 
     def get_position(self) -> int:
         return self.state.position.get(self.product, 0)
@@ -275,6 +277,15 @@ class Manager:
         if volume == 0:
             return None
         return round(total / volume)
+    
+    def add_trader_data(self, key: str, value: Any) -> None:
+        self.new_trader_data[key] = value
+
+    def get_new_trader_data(self) -> Dict[str, Any]:
+        """
+        Used to update trader_data for the next iteration.
+        """
+        return self.new_trader_data
 
 logger = Logger()
 
@@ -342,10 +353,14 @@ class Trader:
         # create orders, conversions and trader_data
         orders = {}
         conversions = 0
-        trader_data = ""
+        new_trader_data = {}
 
         orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
 
-        logger.flush(state, orders, conversions, trader_data)
-        return orders, conversions, trader_data
+        for product in PRODUCTS:
+            new_trader_data.update(managers[product].get_new_trader_data())
+        new_trader_data = json.dumps(new_trader_data)
+
+        logger.flush(state, orders, conversions, new_trader_data)
+        return orders, conversions, new_trader_data
     

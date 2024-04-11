@@ -9,11 +9,17 @@ from datamodel import (
     Trade,
     TradingState,
 )
-from typing import Any
+import numpy as np
+from typing import Any, Dict, Optional
+from collections import OrderedDict
+
+Product = str
 
 SEASHELLS = "SEASHELLS"
 AMETHYSTS = "AMETHYSTS"
 STARFRUIT = "STARFRUIT"
+
+PRODUCTS = [AMETHYSTS, STARFRUIT]
 
 POSITION_LIMITS = {
     AMETHYSTS: 20,
@@ -145,107 +151,317 @@ class Logger:
             return value
 
         return value[: max_length - 3] + "..."
+    
+class Manager:
+    def __init__(self, product: Product, state: TradingState) -> None:
+        self.product = product
+        self.state = state
+        self.orders = []
+        self.trader_data: Dict[str, Any] = json.loads(self.state.traderData) if self.state.traderData else {}
+        self.new_trader_data: Dict[str, Any] = {}
 
+    def get_position(self) -> int:
+        return self.state.position.get(self.product, 0)
+    
+    def get_buy_orders(self) -> OrderedDict[int, int]:
+        """
+        Returns the (price, quantity) of buy orders for the product.
+        Returns an OrderedDict that's sorted based on price (from best to worst).
+        """
+        return OrderedDict(sorted(self.state.order_depths[self.product].buy_orders.items(), reverse=True))
+    
+    def get_sell_orders(self) -> OrderedDict[int, int]:
+        """
+        Returns the (price, quantity) of sell orders for the product.
+        Returns an OrderedDict that's sorted based on price (from best to worst).
+        """
+        return OrderedDict(sorted(self.state.order_depths[self.product].sell_orders.items()))
+    
+    def get_best_buy_order(self) -> Optional[tuple[int, int]]:
+        """
+        Returns the price, quantity for the best buy order for the product.
+        """
+        buy_orders = self.get_buy_orders()
+        if len(buy_orders) == 0:
+            return None
+
+        return list(buy_orders.items())[0]
+    
+    def get_best_sell_order(self) -> Optional[tuple[int, int]]:
+        """
+        Returns the (price, quantity) for the best sell order for the product.
+        """
+        sell_orders = self.get_sell_orders()
+        if len(sell_orders) == 0:
+            return None
+
+        return list(sell_orders.items())[0]
+    
+    def place_order(self, price: int, quantity: int) -> None:
+        """
+        DO NOT USE. Use place_buy_order or place_sell_order instead.
+        Place an order for the product with the given price and quantity.
+        """
+        assert quantity != 0, "cannot place an order with quantity 0"
+
+        if quantity > 0:
+            logger.print(f"BUY {self.product}, {price}, {quantity}")
+        else:
+            logger.print(f"SELL {self.product}, {price}, {quantity}")
+        self.orders.append(Order(self.product, price, quantity))
+    
+    def place_buy_order(self, price: int, quantity: int) -> None:
+        assert quantity > 0, f"buy order quantity must be positive. {quantity=}"
+        assert quantity <= self.max_buy_amount(), f"buy order quantity exceeds position limit. {quantity=}, {self.max_buy_amount()=}"
+
+        self.place_order(price, quantity)
+    
+    def place_sell_order(self, price: int, quantity: int) -> None:
+        assert quantity < 0, f"sell order quantity must be negative. {quantity=}"
+        assert quantity >= self.max_sell_amount(), f"sell order quantity exceeds position limit. {quantity=}, {self.max_sell_amount()=}"
+
+        self.place_order(price, quantity)
+    
+    def pending_orders(self) -> list[Order]:
+        ret = [order for order in self.orders if order.quantity != 0]
+        self.orders = []
+        return ret
+
+    def max_buy_amount(self, position: Optional[int]=None) -> int:
+        """
+        Returns the maximum quantity you can buy.
+        position: The position you want to calculate the maximum buy amount for. If None, the current position is used.
+        """
+        if position is None:
+            position = self.get_position()
+        return POSITION_LIMITS[self.product] - position
+    
+    def max_sell_amount(self, position: Optional[int]=None) -> int:
+        """
+        Returns the minimum quantity you can sell (since it is a negative number).
+        position: The position you want to calculate the minimum sell amount for. If None, the current position is used.
+        """
+        if position is None:
+            position = self.get_position()
+        return -POSITION_LIMITS[self.product] - position
+    
+    def get_mid_price(self) -> Optional[int]:
+        """
+        Returns (best_buy_price + best_sell_price) / 2 rounded to the nearest int.
+        Returns None if there are no buy or sell orders.
+        """
+        best_buy_order = self.get_best_buy_order()
+        best_sell_order = self.get_best_sell_order()
+        if best_buy_order is None and best_sell_order is None:
+            return None
+        if best_buy_order is None:
+            return best_sell_order[0]
+        if best_sell_order is None:
+            return best_buy_order[0]
+        return round((best_buy_order[0] + best_sell_order[0]) / 2.0)
+    
+    def get_VWAP(self) -> Optional[int]:
+        """
+        Returns the VWAP (weighted average of price) rounded to the nearest int.
+        Returns None if there are no buy or sell orders.
+        """
+        buy_orders = self.get_buy_orders()
+        sell_orders = self.get_sell_orders()
+        total, volume = 0, 0
+        for price, qty in buy_orders.items():
+            total += price * qty
+            volume += qty
+        for price, qty in sell_orders.items():
+            total += price * -qty
+            volume += -qty
+
+        if volume == 0:
+            return None
+        return round(total / volume)
+    
+    def add_trader_data(self, key: str, value: Any) -> None:
+        self.new_trader_data[key] = value
+
+    def get_new_trader_data(self) -> Dict[str, Any]:
+        """
+        Used to update trader_data for the next iteration.
+        """
+        return self.new_trader_data
 
 logger = Logger()
 
 
-class AmethystConfigs:
+class StarfruitConfigs:
     def __init__(
         self,
         listing: Listing,
-        price: int,
+        manager: Manager,
+        coefs: list[float],
+        intercept: float,
         mm_spread: int,
-        quantity: int,
+        inventory_adjustment: float,
     ):
         self.listing = listing
-        self.price = price
+        self.manager = manager
+
+        # Taker:
+        self.coefs = coefs
+        self.intercept = intercept
+
+        # Maker:
         self.mm_spread = mm_spread
-        self.quantity = quantity
+        self.inventory_adjustment = inventory_adjustment
 
 
-class AmethystTrader:
-    def __init__(self, configs: AmethystConfigs) -> None:
+class StarfruitTrader:
+    def __init__(self, configs: StarfruitConfigs) -> None:
         self.product = configs.listing.product
-        self.price = configs.price
+        self.manager = configs.manager
+        self.coefs = configs.coefs
+        self.intercept = configs.intercept
         self.mm_spread = configs.mm_spread
-        self.quantity = configs.quantity
+        self.inventory_adjustment = configs.inventory_adjustment
 
-    def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+    def calc_reservation_price(self, price: int, position: int) -> int:
+        reservation_price = price - int(position * self.inventory_adjustment)
+        return reservation_price
+
+    def run(self, state: TradingState) -> None:
+        SF_PREV_PRICES_DIM = 20 # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
         orders = []
-        conversions = 0
-        trader_data = ""
 
-        bid_price = self.price - self.mm_spread // 2
-        bid_quantity = self.quantity
-        logger.print(f"BUY {self.product}, {bid_price=}, {bid_quantity=}")
-        orders.append(Order(self.product, bid_price, bid_quantity))
+        # Pre-Processing
+        trader_data = self.manager.trader_data
+        mid_price = self.manager.get_VWAP()
 
-        ask_price = self.price + self.mm_spread // 2
-        ask_quantity = -self.quantity
-        logger.print(f"SELL {self.product}, {ask_price=}, {ask_quantity=}")
-        orders.append(Order(self.product, ask_price, ask_quantity))
+        sf_prev_prices = trader_data.get("sf_prev_prices", []) # stores the VWAP
+        if len(sf_prev_prices) == SF_PREV_PRICES_DIM:
+            sf_prev_prices = sf_prev_prices[1:]
+        sf_prev_prices.append(mid_price)
 
-        buy_orders = state.order_depths[self.product].buy_orders
-        sell_orders = state.order_depths[self.product].sell_orders
+        if len(sf_prev_prices) >= 3:
+            arr = np.array(sf_prev_prices)
+            # X = np.array([
+            #     arr[-1],                    # lag_0
+            #     arr[-2],                    # lag_1
+            #     arr[-3],                    # lag_2
+            #     np.mean(arr[-5:]),          # ma5
+            #     np.mean(arr[-20:]),         # ma20
+            #     np.log(arr[-1] / arr[-2])   # log_returns
+            # ])
+            X = np.mean(arr[-5:]), np.mean(arr), np.log(sf_prev_prices[-1] / sf_prev_prices[-2]) # [ma5, ma20, log_returns]
+        else:
+            X = []
 
-        pos = state.position.get(self.product, 0)
+        # Linear Regression
+        # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO Decide on what to do with incomplete data
+        future_price = self.intercept - 1
+        for i in range(len(X)):
+            future_price += X[i] * self.coefs[i]
 
-        for level in buy_orders.keys():
-            quantity = buy_orders[level]
-            if level > 10_000:
-                logger.print(
-                    f"SELL {self.product}, ask_price={level}, ask_quantity{-quantity}"
-                )
-                orders.append(Order(self.product, level, -quantity))
-            if level == 10_000 and pos > 0:
-                logger.print(
-                    f"SELL {self.product}, ask_price={level}, ask_quantity{-pos}"
-                )
-                orders.append(Order(self.product, level, -max(quantity, pos)))
+        # Buy Orders
+        max_buy_amount = self.manager.max_buy_amount()
+        total_buy_amount = 0
 
-        for level in sell_orders.keys():
-            quantity = sell_orders[level]
-            if level < 10_000:
-                logger.print(
-                    f"BUY {self.product}, bid_price={level}, bid_quantity{quantity}"
-                )
-                orders.append(Order(self.product, level, quantity))
-            if level == 10_000 and pos < 0:
-                logger.print(
-                    f"BUY {self.product}, bid_price={level}, bid_quantity{pos}"
-                )
-                orders.append(Order(self.product, level, max(quantity, -pos)))
+        if X != []:
+            sell_orders = self.manager.get_sell_orders()
+            for price, quantity in sell_orders.items():
+                if total_buy_amount >= max_buy_amount:
+                    break
 
-        return orders, conversions, trader_data
+                if price < future_price:
+                    buy_amount = min(max_buy_amount - total_buy_amount, -quantity)
+                    if buy_amount > 0:
+                        self.manager.place_buy_order(price, buy_amount)
+                        total_buy_amount += buy_amount
+
+        # reservation_price = self.calc_reservation_price(
+        #     int(future_price), self.manager.get_position()
+        # )
+        # bid_price = reservation_price - self.mm_spread // 2
+        # bid_quantity = max_buy_amount - total_buy_amount
+        # if bid_quantity > 0:
+        #     self.manager.place_buy_order(bid_price, bid_quantity)
+
+        # Sell Orders
+        max_sell_amount = self.manager.max_sell_amount()
+        total_sell_amount = 0
+
+        if X != []:
+            buy_orders = self.manager.get_buy_orders()
+            for price, quantity in buy_orders.items():
+                if total_sell_amount <= max_sell_amount:
+                    break
+
+                if price > future_price:
+                    sell_amount = min(max_sell_amount - total_sell_amount, quantity)
+                    if sell_amount < 0:
+                        self.manager.place_sell_order(price, sell_amount)
+                        total_sell_amount += sell_amount
+        
+        # reservation_price = self.calc_reservation_price(
+        #     int(future_price), self.manager.get_position()
+        # )
+        # ask_price = reservation_price + self.mm_spread // 2
+        # ask_quantity = max_sell_amount - total_sell_amount
+        # if ask_quantity < 0:
+        #     self.manager.place_sell_order(ask_price, ask_quantity)
+
+        # Update trader data
+        self.manager.add_trader_data("sf_prev_prices", sf_prev_prices)
+        
 
 
 class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        # initialize managers
+        managers = {product: Manager(product, state) for product in PRODUCTS}
+
         # initialize configs
-        amethyst_configs = AmethystConfigs(
-            Listing(symbol=AMETHYSTS, product=AMETHYSTS, denomination=SEASHELLS),
-            price=10_000,
+        starfruit_configs = StarfruitConfigs(
+            Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
+            manager=managers[STARFRUIT],
+            # coefs=[
+            #     0.6817843073384962,     # lag_0
+            #     0.20601363885596177,    # lag_1
+            #     0.024910687823564447,   # lag_2
+            #     0.08827281372796819,    # ma5
+            #     -0.0011044931668754358, # ma20
+            #     -4.859034105396616e-05  # log_returns
+            # ],
+            # intercept=0.6222824523729287
+            coefs = [1.1315559966422333, -0.1317692165861087, 0.6039230657326521], # [ma5, ma20, log_returns]
+            intercept = 1.0772175429037816,
             mm_spread=2,
-            quantity=5,
+            inventory_adjustment=0.1,
         )
+
+        # BASIC CONFIGS
+        # starfruit_configs = StarfruitConfigs(
+        #     Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
+        #     manager=managers[STARFRUIT],
+        #     coefs = [], # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+        #     intercept = 0, # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+        #     regression_inputs = [], # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+        # )
 
         # initialize traders
-        amethyst_trader = AmethystTrader(amethyst_configs)
+        starfruit_trader = StarfruitTrader(starfruit_configs)
 
         # run traders
-        amethyst_orders, amethyst_conversions, amethyst_trader_data = (
-            amethyst_trader.run(state)
-        )
+        starfruit_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}
         conversions = 0
-        trader_data = ""
+        new_trader_data = {}
 
-        orders[AMETHYSTS] = amethyst_orders
-        conversions += amethyst_conversions
-        trader_data += amethyst_trader_data
+        orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
 
-        logger.flush(state, orders, conversions, trader_data)
-        return orders, conversions, trader_data
+        for product in PRODUCTS:
+            new_trader_data.update(managers[product].get_new_trader_data())
+        new_trader_data = json.dumps(new_trader_data)
+
+        logger.flush(state, orders, conversions, new_trader_data)
+        return orders, conversions, new_trader_data
+    

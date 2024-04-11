@@ -329,7 +329,7 @@ class AmethystTrader:
         if bid_quantity > 0:
             self.manager.place_buy_order(bid_price, bid_quantity)
 
-        ask_price = reservation_price + self.mm_spread // 2
+        ask_price = bid_price + self.mm_spread
         ask_quantity = sell_quantity_limit
         if ask_quantity < 0:
             self.manager.place_sell_order(ask_price, ask_quantity)
@@ -375,7 +375,7 @@ class StarfruitTrader:
         if bid_quantity > 0:
             self.manager.place_buy_order(bid_price, bid_quantity)
 
-        ask_price = reservation_price + self.mm_spread // 2
+        ask_price = bid_price + self.mm_spread
         ask_quantity = sell_quantity_limit
         if ask_quantity < 0:
             self.manager.place_sell_order(ask_price, ask_quantity)
@@ -395,8 +395,8 @@ class Trader:
         )
         starfruit_configs = StarfruitConfigs(
             Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
-            mm_spread=4,
-            inventory_adjustment=0.09,
+            mm_spread=3,
+            inventory_adjustment=0.11,
             manager=managers[STARFRUIT],
         )
 

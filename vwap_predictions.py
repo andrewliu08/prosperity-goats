@@ -32,7 +32,7 @@ price_columns = ["mid_price", "bid_price_1", "bid_price_2", "bid_price_3", "ask_
 # CONFIGS
 product = "STARFRUIT"
 # scaler = MinMaxScaler()
-model = LinearRegression()
+model = Ridge()
 
 # SCALE DATA
 df = prices[product].copy()
@@ -83,18 +83,45 @@ features['weighted_trade_price'] = (
 
 previous_timesteps = 5
 future_timesteps = 1
+
+# feature calc
+
 # Previous Timesteps:
 for lag in range(0, previous_timesteps):
     features[f'lag_{lag}'] = features['weighted_trade_price'].shift(lag)
 
-# features['ema_mid_price'] = df['mid_price'].ewm(span=10, adjust=False).mean()
+features['ema_weighted_price'] = features['weighted_trade_price'].ewm(span=10, adjust=False).mean()
+# features['vwap_midprice_product'] = features['weighted_trade_price'] * df['mid_price'].reset_index(drop=True)
+
+features['ma5'] = features['weighted_trade_price'].rolling(window=5).mean()
+features['ma20'] = features['weighted_trade_price'].rolling(window=20).mean()
+
+# RSI Calculation
+delta = df['mid_price'].diff(1)
+gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+rs = gain / loss
+features['rsi'] = 100 - (100 / (1 + rs))
+
+features['log_returns'] = np.log(features['weighted_trade_price'] / features['weighted_trade_price'].shift(1))
+# Handling any infinite or NaN values that might arise from division by zero or log of zero
+features['log_returns'] = features['log_returns'].replace([np.inf, -np.inf], np.nan).fillna(0)
+
+exp1 = df['mid_price'].ewm(span=12, adjust=False).mean()
+exp2 = df['mid_price'].ewm(span=26, adjust=False).mean()
+features['macd'] = exp1 - exp2
+features['macd_signal'] = features['macd'].ewm(span=9, adjust=False).mean()
+
+# featurecalc
 
 # Future Timesteps:
 features['future'] = features['weighted_trade_price'].shift(-future_timesteps)
 features = features.dropna()
 
 # print(features.tail())
-X = features.drop(columns=['future'])
+selected_columns=['log_returns', 'ma5', 'ma20']
+X = features[selected_columns]
+# X = features.drop(columns=['future'])
 y = features['future']
 
 # TRAIN-TEST SPLIT
@@ -107,6 +134,15 @@ y_train, y_test = y[:split_point], y[split_point:]
 model.fit(X_train, y_train)
 predictions = model.predict(X_test)
 
+
+# vwap_values = features['weighted_trade_price']
+
+# # Calculate the average and standard deviation of VWAP
+# average_vwap = vwap_values.mean()
+# std_dev_vwap = vwap_values.std()
+
+# print(f"Average VWAP: {average_vwap}")
+# print(f"Standard Deviation of VWAP: {std_dev_vwap}")
 # ERROR
 
 mse = mean_squared_error(y_test, predictions)
@@ -136,28 +172,38 @@ def plot_coefficients(model, feature_names):
     sorted_indices = np.argsort(np.abs(coefficients))[::-1]
     sorted_coefficients = coefficients[sorted_indices]
     sorted_names = [names[i] for i in sorted_indices]
-    # Plot
-    plt.figure(figsize=(10, 6))
-    plt.barh(range(len(sorted_names)), sorted_coefficients, align='center')
-    plt.yticks(range(len(sorted_names)), sorted_names)
-    plt.xlabel('Coefficient Value')
-    plt.title('Coefficient Importance')
-    plt.show()
+    # Plot coefficient importance
+    # plt.figure(figsize=(10, 6))
+    # plt.barh(range(len(sorted_names)), sorted_coefficients, align='center')
+    # plt.yticks(range(len(sorted_names)), sorted_names)
+    # plt.xlabel('Coefficient Value')
+    # plt.title('Coefficient Importance')
+    # plt.show()
 
     for i, (coef, column) in enumerate(zip(sorted_coefficients, sorted_names)):
         print(f"{column.ljust(20)}: {coef}")
     
+    # Plot Actual vs. Predicted Prices
     plt.figure(figsize=(10, 6))
-
     y_test_subset = y_test.reset_index(drop=True)[:200]
-
+    predictions_subset = predictions[:200]
     plt.plot(y_test_subset, label='Actual')
-    plt.plot(predictions[:200], label='Predicted', alpha=0.7)
-
+    plt.plot(predictions_subset, label='Predicted', alpha=0.7)
     plt.title('Actual vs. Predicted Prices')
     plt.xlabel('Time Step')
     plt.ylabel('Price')
     plt.legend()
     plt.show()
 
+    # Manually calculate the Mean Squared Error (MSE) for the first 50 predictions
+    mse_manual = np.sum((y_test_subset - predictions_subset) ** 2) / len(y_test_subset)
+    print(f"Manually Calculated Mean Squared Error: {mse_manual}")
+
+    weighted_trade_price_diff = features['weighted_trade_price'].diff().abs().dropna()
+    
+    average_diff = weighted_trade_price_diff.mean()
+    print(f"Average Difference of the Weighted Trade Price (VWAP) for Consecutive Entries: {average_diff}")
+    print("Intercept:", model.intercept_)
+
+# Ensure to pass the actual y_test and predictions arrays to this function when calling it
 plot_coefficients(model, X.columns)
