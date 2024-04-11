@@ -346,19 +346,19 @@ class AmethystTrader:
         buy_quota = self.manager.max_buy_amount()
         sell_quota = self.manager.max_sell_amount()
 
-        for price,qty in buy_orders.items(): #qty is positive, but we are trying to sell
-            if price > mp + 1 and qty>0:
-                q = max(-qty, sell_quota)
-                if q!=0:
-                    self.manager.place_sell_order(price,q)
-                sell_quota -= q
+        # for price,qty in buy_orders.items(): #qty is positive, but we are trying to sell
+        #     if price > mp + 1 and qty>0:
+        #         q = max(-qty, sell_quota)
+        #         if q!=0:
+        #             self.manager.place_sell_order(price,q)
+        #         sell_quota -= q
         
-        for price,qty in sell_orders.items():
-            if price < mp -1 and qty<0:
-                q = min(-qty,buy_quota)
-                if q!=0:
-                    self.manager.place_buy_order(price,q)
-                buy_quota -= q
+        # for price,qty in sell_orders.items():
+        #     if price < mp -1 and qty<0:
+        #         q = min(-qty,buy_quota)
+        #         if q!=0:
+        #             self.manager.place_buy_order(price,q)
+        #         buy_quota -= q
         
 
         buy_book = [12,8]
