@@ -313,21 +313,54 @@ class AmethystTrader:
         self.mm_spread = configs.mm_spread
         self.quantity = configs.quantity
         self.manager = configs.manager
-
-    def run(self, state: TradingState) -> None:
+    
+    def position_adjustment(self, adjustments: list[int], position: int):
+        lim = POSITION_LIMITS[self.product]
+        cutoffs = np.linspace(-lim, lim, len(adjustments) + 1)
+        for adj, cutoff in zip(adjustments, cutoffs[1:-1]):
+            if position <= cutoff:
+                return adj
+        return adjustments[-1]
+    
+    def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = []
         conversions = 0
         trader_data = ""
+        mp = 10000
+                
+        buy_orders = self.manager.get_buy_orders()
+        sell_orders = self.manager.get_sell_orders()
 
-        bid_price = self.price - self.mm_spread // 2
-        bid_quantity = min(self.quantity, self.manager.max_buy_amount())
-        if bid_quantity != 0:
-            self.manager.place_buy_order(bid_price, bid_quantity)
+        buy_quota = self.manager.max_buy_amount()
+        sell_quota = self.manager.max_sell_amount()
+        
+        buy_book = [12,8]
+        spread = 1
+        #spread of 0 seems to be better for day -2, 1 better for day -1, and day 0
+        adj = self.position_adjustment([-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,1,1,1,1,1,1,1,1],self.manager.get_position())
+        
+        bp = 10000 - spread - adj
+        sp = 10000 + spread - adj
 
-        ask_price = self.price + self.mm_spread // 2
-        ask_quantity = max(-self.quantity, self.manager.max_sell_amount())
-        if ask_quantity != 0:
-            self.manager.place_sell_order(ask_price, ask_quantity)
+        for i,qty in enumerate (buy_book):
+            q = min(qty, buy_quota)
+            if q!=0:
+                self.manager.place_buy_order(bp-i,q)
+            buy_quota-=q
+        if buy_quota > 0:
+            self.manager.place_buy_order(bp-len(buy_book),buy_quota)
+
+
+        for i,qty in enumerate (buy_book):
+            q = max(-qty,sell_quota)
+            if q!=0:
+                self.manager.place_sell_order(sp+i,q)
+            sell_quota-=q
+        if sell_quota < 0:
+            self.manager.place_sell_order(sp+len(buy_book),sell_quota)
+
+
+
 
 
 class Trader:
