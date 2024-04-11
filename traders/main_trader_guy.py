@@ -1,20 +1,20 @@
 import json
+from collections import OrderedDict
 from datamodel import (
     Listing,
     Observation,
     Order,
     OrderDepth,
+    Product,
     ProsperityEncoder,
     Symbol,
     Trade,
     TradingState,
 )
 from typing import Any, Dict, Optional
-from collections import OrderedDict
 
 import numpy as np
 
-Product = str
 
 SEASHELLS = "SEASHELLS"
 AMETHYSTS = "AMETHYSTS"

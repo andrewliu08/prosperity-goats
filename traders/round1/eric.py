@@ -191,10 +191,10 @@ class AmethystTrader:
         # #mean and stdev of all past trades since last interation (including our own)
         # market_prices = [] #trades not including our own
         # for trade in state.market_trades.values():
-        #     if trade.Symbol == AMETHYSTS: 
+        #     if trade.Symbol == AMETHYSTS:
         #         market_prices.extend(trade.price)
         # for trade in state.own_trades.values():
-        #     if trade.Symbol == AMETHYSTS: 
+        #     if trade.Symbol == AMETHYSTS:
         #         market_prices.extend(trade.price)
         # mean = statistics.mean(market_prices)
         # std_dev = statistics.stdev(market_prices)
@@ -207,26 +207,26 @@ class AmethystTrader:
         #             market_prices.extend(trade.price)
         # mean = statistics.mean(market_prices)
         # std_dev = statistics.stdev(market_prices)
-        
+
         # #weighted mean/stdev accounting for quantity including all trades since last iteration
         # market_prices = [] #trades not including our own
         # for trade in state.market_trades.values():
-        #     if trade.Symbol == AMETHYSTS: 
+        #     if trade.Symbol == AMETHYSTS:
         #         for i in range (trade.quantity):
         #             market_prices.extend(trade.price)
         # for trade in state.own_trades.values():
-        #     if trade.Symbol == AMETHYSTS: 
+        #     if trade.Symbol == AMETHYSTS:
         #         for i in range (trade.quantity):
         #             market_prices.extend(trade.price)
         # mean = statistics.mean(market_prices)
         # std_dev = statistics.stdev(market_prices)
 
-        #if any outstanding orders exist that are one standard deviation away in an advantageuous 
-        #direction, immediately take the trade
+        # if any outstanding orders exist that are one standard deviation away in an advantageuous
+        # direction, immediately take the trade
         outstanding_sells = state.order_depths.get(AMETHYSTS).sell_orders
         outstanding_buys = state.order_depths.get(AMETHYSTS).buy_orders
 
-        #current weighted average of all outstanding market orders
+        # current weighted average of all outstanding market orders
         # market_prices = []
         # for order in outstanding_sells.items():
         #     for i in range (order[1]):
@@ -237,8 +237,8 @@ class AmethystTrader:
         # mean = statistics.mean(market_prices)
         # std_dev = statistics.stdev(market_prices)
 
-        #check mean and standard deviation on outstanding orders to check if we want to buy/sell
-        #buy
+        # check mean and standard deviation on outstanding orders to check if we want to buy/sell
+        # buy
         # pos = state.position.get(self.product, 0)
 
         # for level in outstanding_buys.keys():
@@ -250,7 +250,6 @@ class AmethystTrader:
         #         logger.print(f"SELL {self.product}, ask_price={level}, ask_quantity{-pos}")
         #         orders.append(Order(self.product, level, -max(quantity, pos)))
 
-        
         # for level in outstanding_sells.keys():
         #     quantity = outstanding_sells[level]
         #     if level < 10_000:
@@ -260,45 +259,53 @@ class AmethystTrader:
         #         logger.print(f"BUY {self.product}, bid_price={level}, bid_quantity{pos}")
         #         orders.append(Order(self.product, level, max(quantity, -pos)))
 
-        #buy
+        # buy
         position_copy = state.position.get(self.product, 0)
-        for key,value in outstanding_sells.items():
+        for key, value in outstanding_sells.items():
             value = -value
-            if (key == 10000):
-                if (position_copy < -self.threshold):
+            if key == 10000:
+                if position_copy < -self.threshold:
                     amount_bought = value
-                    if (-self.threshold - position_copy < value):
+                    if -self.threshold - position_copy < value:
                         amount_bought = -self.threshold - position_copy
-                    orders.append(Order(AMETHYSTS,key,amount_bought))
-                    logger.print(f"BUY {AMETHYSTS}, bid_price={key}, bid_quantity{amount_bought}")
+                    orders.append(Order(AMETHYSTS, key, amount_bought))
+                    logger.print(
+                        f"BUY {AMETHYSTS}, bid_price={key}, bid_quantity{amount_bought}"
+                    )
                     position_copy += amount_bought
-            if (key < 10000):
+            if key < 10000:
                 amount_bought = value
-                if (value + position_copy > POSITION_LIMITS[AMETHYSTS]):
+                if value + position_copy > POSITION_LIMITS[AMETHYSTS]:
                     amount_bought = POSITION_LIMITS[AMETHYSTS] - position_copy
-                if (amount_bought > 0):
-                    orders.append(Order(AMETHYSTS,key,amount_bought))
-                    logger.print(f"BUY {AMETHYSTS}, bid_price={key}, bid_quantity{amount_bought}")
+                if amount_bought > 0:
+                    orders.append(Order(AMETHYSTS, key, amount_bought))
+                    logger.print(
+                        f"BUY {AMETHYSTS}, bid_price={key}, bid_quantity{amount_bought}"
+                    )
                 position_copy += amount_bought
-        
-        #sell
+
+        # sell
         position_copy = state.position.get(self.product, 0)
-        for key,value in outstanding_buys.items():
-            if (key == 10000):
-                if (position_copy > self.threshold):
+        for key, value in outstanding_buys.items():
+            if key == 10000:
+                if position_copy > self.threshold:
                     amount_sold = value
-                    if (position_copy - self.threshold < value):
+                    if position_copy - self.threshold < value:
                         amount_sold = position_copy - self.threshold
-                    orders.append(Order(AMETHYSTS,key,-amount_sold))
-                    logger.print(f"SELL {AMETHYSTS}, bid_price={key}, bid_quantity{-amount_sold}")
+                    orders.append(Order(AMETHYSTS, key, -amount_sold))
+                    logger.print(
+                        f"SELL {AMETHYSTS}, bid_price={key}, bid_quantity{-amount_sold}"
+                    )
                     position_copy -= amount_sold
-            if (key > 10000):
+            if key > 10000:
                 amount_sold = value
-                if (position_copy - value < -POSITION_LIMITS[AMETHYSTS]):
-                    amount_sold = position_copy -POSITION_LIMITS[AMETHYSTS]
-                if (amount_sold > 0):
-                    orders.append(Order(AMETHYSTS,key,-amount_sold))
-                    logger.print(f"SELL {AMETHYSTS}, bid_price={key}, bid_quantity{-amount_sold}")
+                if position_copy - value < -POSITION_LIMITS[AMETHYSTS]:
+                    amount_sold = position_copy - POSITION_LIMITS[AMETHYSTS]
+                if amount_sold > 0:
+                    orders.append(Order(AMETHYSTS, key, -amount_sold))
+                    logger.print(
+                        f"SELL {AMETHYSTS}, bid_price={key}, bid_quantity{-amount_sold}"
+                    )
                 position_copy -= amount_sold
         return orders, conversions, trader_data
 
@@ -311,16 +318,18 @@ class Trader:
             price=10_000,
             mm_spread=2,
             quantity=5,
-            threshold=17
+            threshold=17,
         )
 
         # initialize traders
         amethyst_trader = AmethystTrader(amethyst_configs)
 
         # run traders
-        amethyst_orders, amethyst_conversions, amethyst_trader_data = (
-            amethyst_trader.run(state)
-        )
+        (
+            amethyst_orders,
+            amethyst_conversions,
+            amethyst_trader_data,
+        ) = amethyst_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}

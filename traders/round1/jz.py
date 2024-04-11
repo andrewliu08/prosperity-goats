@@ -203,9 +203,11 @@ class Trader:
         amethyst_trader = AmethystTrader(amethyst_configs)
 
         # run traders
-        amethyst_orders, amethyst_conversions, amethyst_trader_data = (
-            amethyst_trader.run(state)
-        )
+        (
+            amethyst_orders,
+            amethyst_conversions,
+            amethyst_trader_data,
+        ) = amethyst_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}

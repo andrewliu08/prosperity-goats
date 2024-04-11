@@ -291,7 +291,6 @@ class AmethystConfigs:
         self.manager = manager
 
 
-
 class AmethystTrader:
     def __init__(self, configs: AmethystConfigs) -> None:
         self.product = configs.listing.product
@@ -299,7 +298,7 @@ class AmethystTrader:
         self.mm_spread = configs.mm_spread
         self.quantity = configs.quantity
         self.manager = configs.manager
-    
+
     def position_adjustment(self, adjustments: list[int], position: int):
         lim = POSITION_LIMITS[self.product]
         cutoffs = np.linspace(-lim, lim, len(adjustments) + 1)
@@ -307,39 +306,39 @@ class AmethystTrader:
             if position <= cutoff:
                 return adj
         return adjustments[-1]
-    
-    def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
-        #best split so far was like[6,7,7]
-        #best so far was [20], adj  =0, 14.7k, gets 1.29k on official
-        #[10, 10] adj = 0, gets 14.5k
-        #[15,5] adj = 0, gets 14.7k
 
-        #[20], spread = 1, adj = linear, gets 14.9 across 2 days, gets 1.15k on official
-            #adj is [-2,-2,-1,-1,0]
-        #[20], spread = 1, adj = linear, gets 23k across 3 days, gets 1.16k on official
-            #adj is [-2,-1,-1,0]
-        #[10,10], spread = 1, adj = linear, gets 23k across 3 days, gets 1.16k on official
-            #adj is [-2,-1,-1,0]
-        
-        #[10,10,15], spread = 1, adj = linear, gets 23.2k across 3 days, gets 1.17k on official
-            #adj is [-2,-1,-1,-1,0]
-        #[10,10,15], spread = 1, adj = linear, gets 23.2k across 3 days, gets 1.17k on official
-            #adj is [-2,-1,-1,-1,0,0]
-        #[20], spread = 1, adj = linear, gets 15.5k across 2 days, gets 1.17k on official
-            #adj is [-2,-1,-1,-1,0,0]
-        #[20], spread = 1, adj = linear, gets 15.6k across 2 days, gets 1.19k on official
-            #adj is [-1,-1,-1,0]
-        #[12,8] is also a promising split
-        #[12,8], spread = 1, adj = linear, gets 15.628k across 2 days, gets 1.19k on official
-            #adj is [-1,-1,0]
-            #adj is [-1,-1,-1,-1,-1,-1,-1,-1,0,0,0] gets 15.63k
+    def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        # best split so far was like[6,7,7]
+        # best so far was [20], adj  =0, 14.7k, gets 1.29k on official
+        # [10, 10] adj = 0, gets 14.5k
+        # [15,5] adj = 0, gets 14.7k
+
+        # [20], spread = 1, adj = linear, gets 14.9 across 2 days, gets 1.15k on official
+        # adj is [-2,-2,-1,-1,0]
+        # [20], spread = 1, adj = linear, gets 23k across 3 days, gets 1.16k on official
+        # adj is [-2,-1,-1,0]
+        # [10,10], spread = 1, adj = linear, gets 23k across 3 days, gets 1.16k on official
+        # adj is [-2,-1,-1,0]
+
+        # [10,10,15], spread = 1, adj = linear, gets 23.2k across 3 days, gets 1.17k on official
+        # adj is [-2,-1,-1,-1,0]
+        # [10,10,15], spread = 1, adj = linear, gets 23.2k across 3 days, gets 1.17k on official
+        # adj is [-2,-1,-1,-1,0,0]
+        # [20], spread = 1, adj = linear, gets 15.5k across 2 days, gets 1.17k on official
+        # adj is [-2,-1,-1,-1,0,0]
+        # [20], spread = 1, adj = linear, gets 15.6k across 2 days, gets 1.19k on official
+        # adj is [-1,-1,-1,0]
+        # [12,8] is also a promising split
+        # [12,8], spread = 1, adj = linear, gets 15.628k across 2 days, gets 1.19k on official
+        # adj is [-1,-1,0]
+        # adj is [-1,-1,-1,-1,-1,-1,-1,-1,0,0,0] gets 15.63k
         orders = []
         conversions = 0
         trader_data = ""
         mp = 10000
-        
+
         # if inventory is taking too long or too short, take wtv order first to help rebalance
-        
+
         buy_orders = self.manager.get_buy_orders()
         sell_orders = self.manager.get_sell_orders()
 
@@ -352,40 +351,40 @@ class AmethystTrader:
         #         if q!=0:
         #             self.manager.place_sell_order(price,q)
         #         sell_quota -= q
-        
+
         # for price,qty in sell_orders.items():
         #     if price < mp -1 and qty<0:
         #         q = min(-qty,buy_quota)
         #         if q!=0:
         #             self.manager.place_buy_order(price,q)
         #         buy_quota -= q
-        
 
-        buy_book = [12,8]
+        buy_book = [12, 8]
         spread = 1
-        #spread of 0 seems to be better for day -2, 1 better for day -1, and day 0
-        adj = self.position_adjustment([-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,1,1,1,1,1,1,1,1],self.manager.get_position())
-        
+        # spread of 0 seems to be better for day -2, 1 better for day -1, and day 0
+        adj = self.position_adjustment(
+            [-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+            self.manager.get_position(),
+        )
+
         bp = 10000 - spread - adj
         sp = 10000 + spread - adj
 
-        for i,qty in enumerate (buy_book):
+        for i, qty in enumerate(buy_book):
             q = min(qty, buy_quota)
-            if q!=0:
-                self.manager.place_buy_order(bp-i,q)
-            buy_quota-=q
+            if q != 0:
+                self.manager.place_buy_order(bp - i, q)
+            buy_quota -= q
         if buy_quota > 0:
-            self.manager.place_buy_order(bp-len(buy_book),buy_quota)
+            self.manager.place_buy_order(bp - len(buy_book), buy_quota)
 
-
-        for i,qty in enumerate (buy_book):
-            q = max(-qty,sell_quota)
-            if q!=0:
-                self.manager.place_sell_order(sp+i,q)
-            sell_quota-=q
+        for i, qty in enumerate(buy_book):
+            q = max(-qty, sell_quota)
+            if q != 0:
+                self.manager.place_sell_order(sp + i, q)
+            sell_quota -= q
         if sell_quota < 0:
-            self.manager.place_sell_order(sp+len(buy_book),sell_quota)
-
+            self.manager.place_sell_order(sp + len(buy_book), sell_quota)
 
 
 class StarfruitConfigs:
