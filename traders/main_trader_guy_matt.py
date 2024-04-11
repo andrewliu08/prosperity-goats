@@ -327,7 +327,7 @@ class StarfruitTrader:
         return reservation_price
 
     def run(self, state: TradingState) -> None:
-        SF_PREV_PRICES_DIM = 20 # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+        SF_PREV_PRICES_DIM = 4
         orders = []
 
         # Pre-Processing
@@ -339,25 +339,14 @@ class StarfruitTrader:
             sf_prev_prices = sf_prev_prices[1:]
         sf_prev_prices.append(mid_price)
 
-        if len(sf_prev_prices) >= 3:
-            arr = np.array(sf_prev_prices)
-            # X = np.array([
-            #     arr[-1],                    # lag_0
-            #     arr[-2],                    # lag_1
-            #     arr[-3],                    # lag_2
-            #     np.mean(arr[-5:]),          # ma5
-            #     np.mean(arr[-20:]),         # ma20
-            #     np.log(arr[-1] / arr[-2])   # log_returns
-            # ])
-            X = np.mean(arr[-5:]), np.mean(arr), np.log(sf_prev_prices[-1] / sf_prev_prices[-2]) # [ma5, ma20, log_returns]
+        # Linear Regression
+        if len(sf_prev_prices) == SF_PREV_PRICES_DIM:
+            X = sf_prev_prices # lag_x
+            future_price = self.intercept
+            for i in range(len(X)):
+                future_price += X[i] * self.coefs[i]
         else:
             X = []
-
-        # Linear Regression
-        # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO Decide on what to do with incomplete data
-        future_price = self.intercept - 1
-        for i in range(len(X)):
-            future_price += X[i] * self.coefs[i]
 
         # Buy Orders
         max_buy_amount = self.manager.max_buy_amount()
@@ -375,13 +364,13 @@ class StarfruitTrader:
                         self.manager.place_buy_order(price, buy_amount)
                         total_buy_amount += buy_amount
 
-        # reservation_price = self.calc_reservation_price(
-        #     int(future_price), self.manager.get_position()
-        # )
-        # bid_price = reservation_price - self.mm_spread // 2
-        # bid_quantity = max_buy_amount - total_buy_amount
-        # if bid_quantity > 0:
-        #     self.manager.place_buy_order(bid_price, bid_quantity)
+        reservation_price = self.calc_reservation_price(
+            int(future_price if X != [] else mid_price), self.manager.get_position()
+        )
+        bid_price = reservation_price - self.mm_spread // 2
+        bid_quantity = max_buy_amount - total_buy_amount
+        if bid_quantity > 0:
+            self.manager.place_buy_order(bid_price, bid_quantity)
 
         # Sell Orders
         max_sell_amount = self.manager.max_sell_amount()
@@ -398,14 +387,11 @@ class StarfruitTrader:
                     if sell_amount < 0:
                         self.manager.place_sell_order(price, sell_amount)
                         total_sell_amount += sell_amount
-        
-        # reservation_price = self.calc_reservation_price(
-        #     int(future_price), self.manager.get_position()
-        # )
-        # ask_price = reservation_price + self.mm_spread // 2
-        # ask_quantity = max_sell_amount - total_sell_amount
-        # if ask_quantity < 0:
-        #     self.manager.place_sell_order(ask_price, ask_quantity)
+
+        ask_price = bid_price + self.mm_spread 
+        ask_quantity = max_sell_amount - total_sell_amount
+        if ask_quantity < 0:
+            self.manager.place_sell_order(ask_price, ask_quantity)
 
         # Update trader data
         self.manager.add_trader_data("sf_prev_prices", sf_prev_prices)
@@ -421,29 +407,11 @@ class Trader:
         starfruit_configs = StarfruitConfigs(
             Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
             manager=managers[STARFRUIT],
-            # coefs=[
-            #     0.6817843073384962,     # lag_0
-            #     0.20601363885596177,    # lag_1
-            #     0.024910687823564447,   # lag_2
-            #     0.08827281372796819,    # ma5
-            #     -0.0011044931668754358, # ma20
-            #     -4.859034105396616e-05  # log_returns
-            # ],
-            # intercept=0.6222824523729287
-            coefs = [1.1315559966422333, -0.1317692165861087, 0.6039230657326521], # [ma5, ma20, log_returns]
-            intercept = 1.0772175429037816,
-            mm_spread=2,
-            inventory_adjustment=0.1,
+            coefs = [0.030847739217679665, 0.047536040306744326, 0.22183513277646527, 0.6996451923517073], # [lag3, lag2, lag1, lag0] VWAP ALL 100%
+            intercept = 0.6872903013800169,
+            mm_spread=3,
+            inventory_adjustment=0.09,
         )
-
-        # BASIC CONFIGS
-        # starfruit_configs = StarfruitConfigs(
-        #     Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
-        #     manager=managers[STARFRUIT],
-        #     coefs = [], # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
-        #     intercept = 0, # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
-        #     regression_inputs = [], # TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
-        # )
 
         # initialize traders
         starfruit_trader = StarfruitTrader(starfruit_configs)
