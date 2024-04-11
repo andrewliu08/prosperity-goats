@@ -462,7 +462,7 @@ class StarfruitTrader:
                     break
 
                 if price > future_price:
-                    sell_amount = min(max_sell_amount - total_sell_amount, quantity)
+                    sell_amount = max(max_sell_amount - total_sell_amount, -quantity)
                     if sell_amount < 0:
                         self.manager.place_sell_order(price, sell_amount)
                         total_sell_amount += sell_amount
