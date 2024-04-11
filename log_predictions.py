@@ -88,39 +88,26 @@ future_timesteps = 1
 # feature calc
 
 # Previous Timesteps:
-for lag in range(0, previous_timesteps):
-    features[f'lag_{lag}'] = features['weighted_trade_price'].shift(lag)
 
-features['ema_weighted_price'] = features['weighted_trade_price'].ewm(span=10, adjust=False).mean()
-# features['vwap_midprice_product'] = features['weighted_trade_price'] * df['mid_price'].reset_index(drop=True)
-
-features['ma5'] = features['weighted_trade_price'].rolling(window=5).mean()
-features['ma20'] = features['weighted_trade_price'].rolling(window=20).mean()
-
-# RSI Calculation
-delta = df['mid_price'].diff(1)
-gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-rs = gain / loss
-features['rsi'] = 100 - (100 / (1 + rs))
 
 features['log_returns'] = np.log(features['weighted_trade_price'] / features['weighted_trade_price'].shift(1))
 # Handling any infinite or NaN values that might arise from division by zero or log of zero
 features['log_returns'] = features['log_returns'].replace([np.inf, -np.inf], np.nan).fillna(0)
 
-exp1 = df['mid_price'].ewm(span=12, adjust=False).mean()
-exp2 = df['mid_price'].ewm(span=26, adjust=False).mean()
-features['macd'] = exp1 - exp2
-features['macd_signal'] = features['macd'].ewm(span=9, adjust=False).mean()
+features['ma5'] = features['log_returns'].rolling(window=5).mean()
+features['ma20'] = features['log_returns'].rolling(window=20).mean()
+
+for lag in range(0, previous_timesteps):
+    features[f'lag_{lag}'] = features['log_returns'].shift(lag)
 
 # featurecalc
 
 # Future Timesteps:
-features['future'] = features['weighted_trade_price'].shift(-future_timesteps)
+features['future'] = features['log_returns'].shift(-future_timesteps)
 features = features.dropna()
 
 # print(features.tail())
-# selected_columns=['ma5','ma20','log_returns']
+# selected_columns=['ma5','ma20']
 selected_columns=['lag_0','lag_1','lag_2','lag_3']
 X = features[selected_columns]
 # X = features.drop(columns=['future'])
@@ -187,8 +174,8 @@ def plot_coefficients(model, feature_names):
     
     # Plot Actual vs. Predicted Prices
     plt.figure(figsize=(10, 6))
-    y_test_subset = y_test.reset_index(drop=True)[:200]
-    predictions_subset = predictions[:200]
+    y_test_subset = y_test.reset_index(drop=True)[:100]
+    predictions_subset = predictions[:100]
     plt.plot(y_test_subset, label='Actual')
     plt.plot(predictions_subset, label='Predicted', alpha=0.7)
     plt.title('Actual vs. Predicted Prices')
