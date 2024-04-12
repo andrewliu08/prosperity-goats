@@ -312,17 +312,31 @@ class AmethystConfigs:
         listing: Listing,
         manager: Manager,
         price: int,
+        mm_spread: int,
+        quantity: int,
     ):
         self.listing = listing
         self.manager = manager
         self.price = price
+        self.mm_spread = mm_spread
+        self.quantity = quantity
 
 
 class AmethystTrader:
     def __init__(self, configs: AmethystConfigs) -> None:
         self.product = configs.listing.product
-        self.manager = configs.manager
         self.price = configs.price
+        self.mm_spread = configs.mm_spread
+        self.quantity = configs.quantity
+        self.manager = configs.manager
+
+    # def position_adjustment(self, adjustments: list[int], position: int):
+    #     lim = POSITION_LIMITS[self.product]
+    #     cutoffs = np.linspace(-lim, lim, len(adjustments) + 1)
+    #     for adj, cutoff in zip(adjustments, cutoffs[1:-1]):
+    #         if position <= cutoff:
+    #             return adj
+    #     return adjustments[-1]
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         position = self.manager.get_position()
@@ -381,25 +395,63 @@ class AmethystTrader:
                 self.manager.place_sell_order(price, max_sell_amount)
                 exp_pos += max_sell_amount
 
-
 class StarfruitConfigs:
     def __init__(
         self,
         listing: Listing,
         manager: Manager,
+        # mm_spread: int,
+        # inventory_adjustment: float,
+        coefs: list[float],
+        intercept: float,
+        star_price_data_dim: int,
     ):
         self.listing = listing
         self.manager = manager
+
+        # Maker:
+        # self.mm_spread = mm_spread
+        # self.inventory_adjustment = inventory_adjustment
+
+        # Linear Regression:
+        self.coefs = coefs
+        self.intercept = intercept
+        self.star_price_data_dim = star_price_data_dim
+
 
 class StarfruitTrader:
     def __init__(self, configs: StarfruitConfigs) -> None:
         self.product = configs.listing.product
         self.manager = configs.manager
+        # self.mm_spread = configs.mm_spread
+        # self.inventory_adjustment = configs.inventory_adjustment
+        self.coefs = configs.coefs
+        self.intercept = configs.intercept
+        self.star_price_data_dim = configs.star_price_data_dim
+
+    # def calc_reservation_price(self, price: int, position: int) -> int:
+    #     reservation_price = price - int(position * self.inventory_adjustment)
+    #     return reservation_price
 
     def run(self, state: TradingState) -> None:
+        # # Linear Regression
+        # trader_data = self.manager.trader_data
+
+        # star_price_data = trader_data.get("star_price_data", [])
+        # if len(star_price_data) == self.star_price_data_dim:
+        #     star_price_data.pop(0)
+        # star_price_data.append(self.manager.get_mid_price())
+        # self.manager.add_trader_data("star_price_data", star_price_data)
+        # if len(star_price_data) < self.star_price_data_dim:
+        #     return
+        
+        # future_price = self.intercept
+        # for i in range(self.star_price_data_dim):
+        #     future_price += self.coefs[i] * star_price_data[i]
+        # future_price = int(round(future_price))
+
         future_price = self.manager.get_VWAP()
         position = self.manager.get_position()
-        
         # Buy Orders
         exp_pos = self.manager.get_position()
         sell_orders = self.manager.get_sell_orders()
@@ -432,7 +484,6 @@ class StarfruitTrader:
         if sell_amount < 0:
             self.manager.place_sell_order(price, sell_amount)
 
-
 class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         # initialize managers
@@ -443,10 +494,15 @@ class Trader:
             Listing(symbol=AMETHYSTS, product=AMETHYSTS, denomination=SEASHELLS),
             manager=managers[AMETHYSTS],
             price=10_000,
+            mm_spread=2,
+            quantity=5,
         )
         starfruit_configs = StarfruitConfigs(
             Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
             manager=managers[STARFRUIT],
+            coefs=[-0.01869561, 0.0455032 , 0.16316049, 0.8090892],
+            intercept=4.481696494462085,
+            star_price_data_dim=4,
         )
 
         # initialize traders
