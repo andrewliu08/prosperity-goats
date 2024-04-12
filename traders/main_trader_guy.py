@@ -310,16 +310,16 @@ class AmethystConfigs:
     def __init__(
         self,
         listing: Listing,
+        manager: Manager,
         price: int,
         mm_spread: int,
         quantity: int,
-        manager: Manager,
     ):
         self.listing = listing
+        self.manager = manager
         self.price = price
         self.mm_spread = mm_spread
         self.quantity = quantity
-        self.manager = manager
 
 
 class AmethystTrader:
@@ -375,17 +375,11 @@ class StarfruitConfigs:
         self,
         listing: Listing,
         manager: Manager,
-        coefs: list[float],
-        intercept: float,
         mm_spread: int,
         inventory_adjustment: float,
     ):
         self.listing = listing
         self.manager = manager
-
-        # Taker:
-        self.coefs = coefs
-        self.intercept = intercept
 
         # Maker:
         self.mm_spread = mm_spread
@@ -396,8 +390,6 @@ class StarfruitTrader:
     def __init__(self, configs: StarfruitConfigs) -> None:
         self.product = configs.listing.product
         self.manager = configs.manager
-        self.coefs = configs.coefs
-        self.intercept = configs.intercept
         self.mm_spread = configs.mm_spread
         self.inventory_adjustment = configs.inventory_adjustment
 
@@ -406,46 +398,28 @@ class StarfruitTrader:
         return reservation_price
 
     def run(self, state: TradingState) -> None:
-        SF_PREV_PRICES_DIM = 4
-        orders = []
-
-        # Pre-Processing
-        trader_data = self.manager.trader_data
         mid_price = self.manager.get_VWAP()
-
-        sf_prev_prices = trader_data.get("sf_prev_prices", [])  # stores the VWAP
-        if len(sf_prev_prices) == SF_PREV_PRICES_DIM:
-            sf_prev_prices = sf_prev_prices[1:]
-        sf_prev_prices.append(mid_price)
-
-        # Linear Regression
-        if len(sf_prev_prices) == SF_PREV_PRICES_DIM:
-            X = sf_prev_prices  # lag_x
-            future_price = self.intercept
-            for i in range(len(X)):
-                future_price += X[i] * self.coefs[i]
-        else:
-            X = []
+        if mid_price is None:
+            return
+        reservation_price = self.calc_reservation_price(
+            int(mid_price), self.manager.get_position()
+        )
 
         # Buy Orders
         max_buy_amount = self.manager.max_buy_amount()
         total_buy_amount = 0
 
-        if X != []:
-            sell_orders = self.manager.get_sell_orders()
-            for price, quantity in sell_orders.items():
-                if total_buy_amount >= max_buy_amount:
-                    break
+        sell_orders = self.manager.get_sell_orders()
+        for price, quantity in sell_orders.items():
+            if total_buy_amount >= max_buy_amount:
+                break
 
-                if price < future_price:
-                    buy_amount = min(max_buy_amount - total_buy_amount, -quantity)
-                    if buy_amount > 0:
-                        self.manager.place_buy_order(price, buy_amount)
-                        total_buy_amount += buy_amount
+            if price < mid_price:
+                buy_amount = min(max_buy_amount - total_buy_amount, -quantity)
+                if buy_amount > 0:
+                    self.manager.place_buy_order(price, buy_amount)
+                    total_buy_amount += buy_amount
 
-        reservation_price = self.calc_reservation_price(
-            int(future_price if X != [] else mid_price), self.manager.get_position()
-        )
         bid_price = reservation_price - self.mm_spread // 2
         bid_quantity = max_buy_amount - total_buy_amount
         if bid_quantity > 0:
@@ -455,25 +429,22 @@ class StarfruitTrader:
         max_sell_amount = self.manager.max_sell_amount()
         total_sell_amount = 0
 
-        if X != []:
-            buy_orders = self.manager.get_buy_orders()
-            for price, quantity in buy_orders.items():
-                if total_sell_amount <= max_sell_amount:
-                    break
+        # if X != []:
+        buy_orders = self.manager.get_buy_orders()
+        for price, quantity in buy_orders.items():
+            if total_sell_amount <= max_sell_amount:
+                break
 
-                if price > future_price:
-                    sell_amount = max(max_sell_amount - total_sell_amount, -quantity)
-                    if sell_amount < 0:
-                        self.manager.place_sell_order(price, sell_amount)
-                        total_sell_amount += sell_amount
+            if price > mid_price:
+                sell_amount = max(max_sell_amount - total_sell_amount, -quantity)
+                if sell_amount < 0:
+                    self.manager.place_sell_order(price, sell_amount)
+                    total_sell_amount += sell_amount
 
         ask_price = bid_price + self.mm_spread
         ask_quantity = max_sell_amount - total_sell_amount
         if ask_quantity < 0:
             self.manager.place_sell_order(ask_price, ask_quantity)
-
-        # Update trader data
-        self.manager.add_trader_data("sf_prev_prices", sf_prev_prices)
 
 
 class Trader:
@@ -484,21 +455,14 @@ class Trader:
         # initialize configs
         amethyst_configs = AmethystConfigs(
             Listing(symbol=AMETHYSTS, product=AMETHYSTS, denomination=SEASHELLS),
+            manager=managers[AMETHYSTS],
             price=10_000,
             mm_spread=2,
             quantity=5,
-            manager=managers[AMETHYSTS],
         )
         starfruit_configs = StarfruitConfigs(
             Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
             manager=managers[STARFRUIT],
-            coefs=[
-                0.030847739217679665,
-                0.047536040306744326,
-                0.22183513277646527,
-                0.6996451923517073,
-            ],  # [lag3, lag2, lag1, lag0] VWAP ALL 100%
-            intercept=0.6872903013800169,
             mm_spread=4,
             inventory_adjustment=0.09,
         )
