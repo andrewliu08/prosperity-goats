@@ -19,12 +19,14 @@ import numpy as np
 SEASHELLS = "SEASHELLS"
 AMETHYSTS = "AMETHYSTS"
 STARFRUIT = "STARFRUIT"
+ORCHIDS = "ORCHIDS"
 
-PRODUCTS = [AMETHYSTS, STARFRUIT]
+PRODUCTS = [AMETHYSTS, STARFRUIT, ORCHIDS]
 
 POSITION_LIMITS = {
     AMETHYSTS: 20,
     STARFRUIT: 20,
+    ORCHIDS: 100,
 }
 
 
@@ -302,6 +304,24 @@ class Manager:
         """
         return self.new_trader_data
 
+    def get_conv_observations(
+        self,
+    ) -> tuple[float, float, float, float, float, float, float]:
+        """
+        Returns the observation data.
+        (bid_price, ask_price, transport_fees, export_tariff, import_tariff, sunlight, humidity)
+        """
+        conv_observations = self.state.observations.conversionObservations
+        return (
+            conv_observations.bid_price,
+            conv_observations.ask_price,
+            conv_observations.transport_fees,
+            conv_observations.export_tariff,
+            conv_observations.import_tariff,
+            conv_observations.sunlight,
+            conv_observations.humidity,
+        )
+
 
 logger = Logger()
 
@@ -336,7 +356,7 @@ class AmethystTrader:
                 if buy_amount > 0:
                     self.manager.place_buy_order(price, buy_amount)
                     exp_pos += buy_amount
-        
+
         max_buy_amount = self.manager.max_buy_amount(exp_pos)
         best_buy_order = self.manager.get_best_buy_order()
         best_buy_price = best_buy_order[0] if best_buy_order is not None else self.price
@@ -345,7 +365,7 @@ class AmethystTrader:
                 price = min(best_buy_price + 2, self.price - 1)
                 self.manager.place_buy_order(price, max_buy_amount)
                 exp_pos += max_buy_amount
-            elif position > 15: 
+            elif position > 15:
                 price = min(best_buy_price, self.price - 1)
                 self.manager.place_buy_order(price, max_buy_amount)
                 exp_pos += max_buy_amount
@@ -366,7 +386,9 @@ class AmethystTrader:
 
         max_sell_amount = self.manager.max_sell_amount(exp_pos)
         best_sell_order = self.manager.get_best_sell_order()
-        best_sell_price = best_sell_order[0] if best_sell_order is not None else self.price
+        best_sell_price = (
+            best_sell_order[0] if best_sell_order is not None else self.price
+        )
         if max_sell_amount < 0:
             if position > 0:
                 price = max(best_sell_price - 2, self.price + 1)
@@ -391,6 +413,7 @@ class StarfruitConfigs:
         self.listing = listing
         self.manager = manager
 
+
 class StarfruitTrader:
     def __init__(self, configs: StarfruitConfigs) -> None:
         self.product = configs.listing.product
@@ -399,7 +422,7 @@ class StarfruitTrader:
     def run(self, state: TradingState) -> None:
         future_price = self.manager.get_VWAP()
         position = self.manager.get_position()
-        
+
         # Buy Orders
         exp_pos = self.manager.get_position()
         sell_orders = self.manager.get_sell_orders()
@@ -425,12 +448,42 @@ class StarfruitTrader:
                 if sell_amount < 0:
                     self.manager.place_sell_order(price, sell_amount)
                     exp_pos += sell_amount
-        
+
         price, qty = self.manager.get_best_sell_order()
         price = max(price - 1, future_price + 1)
         sell_amount = self.manager.max_sell_amount(exp_pos)
         if sell_amount < 0:
             self.manager.place_sell_order(price, sell_amount)
+
+
+class OrchidConfigs:
+    def __init__(
+        self,
+        listing: Listing,
+        manager: Manager,
+    ):
+        self.listing = listing
+        self.manager = manager
+
+
+class OrchidTrader:
+    def __init__(self, configs: OrchidConfigs) -> None:
+        self.product = configs.listing.product
+        self.manager = configs.manager
+
+    def run(self, state: TradingState) -> None:
+        (
+            bid_price,
+            ask_price,
+            transport_fees,
+            export_tariff,
+            import_tariff,
+            sunlight,
+            humidity,
+        ) = self.manager.get_conv_observations()
+        conv_bid_price = bid_price + import_tariff + transport_fees
+        conv_ask_price = ask_price - export_tariff - transport_fees
+        position = self.manager.get_position()
 
 
 class Trader:
@@ -448,14 +501,20 @@ class Trader:
             Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
             manager=managers[STARFRUIT],
         )
+        orchid_configs = OrchidConfigs(
+            Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
+            manager=managers[ORCHIDS],
+        )
 
         # initialize traders
         amethyst_trader = AmethystTrader(amethyst_configs)
         starfruit_trader = StarfruitTrader(starfruit_configs)
+        orchid_trader = OrchidTrader(orchid_configs)
 
         # run traders
         amethyst_trader.run(state)
         starfruit_trader.run(state)
+        orchid_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}
@@ -464,6 +523,7 @@ class Trader:
 
         orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
         orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
+        orders[ORCHIDS] = orchid_trader.manager.pending_orders()
 
         for product in PRODUCTS:
             new_trader_data.update(managers[product].get_new_trader_data())
