@@ -481,8 +481,8 @@ class OrchidTrader:
             sunlight,
             humidity,
         ) = self.manager.get_conv_observations()
-        conv_bid_price = bid_price + import_tariff + transport_fees
-        conv_ask_price = ask_price - export_tariff - transport_fees
+        conv_bid_price = bid_price - export_tariff - transport_fees
+        conv_ask_price = ask_price + import_tariff + transport_fees
         position = self.manager.get_position()
 
 
