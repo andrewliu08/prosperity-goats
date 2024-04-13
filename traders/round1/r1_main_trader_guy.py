@@ -480,7 +480,7 @@ class Trader:
         conversions = 0
         new_trader_data = {}
 
-        # orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
+        orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
         orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
 
         for product in PRODUCTS:

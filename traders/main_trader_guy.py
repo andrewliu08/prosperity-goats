@@ -444,7 +444,7 @@ class StarfruitTrader:
         buy_orders = self.manager.get_buy_orders()
         for price, qty in buy_orders.items():
             if price > future_price or (position > 0 and price == future_price):
-                sell_amount = max(self.manager.max_sell_amount(exp_pos), qty)
+                sell_amount = max(self.manager.max_sell_amount(exp_pos), -qty)
                 if sell_amount < 0:
                     self.manager.place_sell_order(price, sell_amount)
                     exp_pos += sell_amount
