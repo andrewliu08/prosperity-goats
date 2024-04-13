@@ -161,6 +161,7 @@ class Manager:
         self.product = product
         self.state = state
         self.orders = []
+        self.conversions = 0
         self.trader_data: Dict[str, Any] = (
             json.loads(self.state.traderData) if self.state.traderData else {}
         )
@@ -311,16 +312,31 @@ class Manager:
         Returns the observation data.
         (bid_price, ask_price, transport_fees, export_tariff, import_tariff, sunlight, humidity)
         """
-        conv_observations = self.state.observations.conversionObservations
+        conv_observations = self.state.observations.conversionObservations[self.product]
         return (
-            conv_observations.bid_price,
-            conv_observations.ask_price,
-            conv_observations.transport_fees,
-            conv_observations.export_tariff,
-            conv_observations.import_tariff,
+            conv_observations.bidPrice,
+            conv_observations.askPrice,
+            conv_observations.transportFees,
+            conv_observations.exportTariff,
+            conv_observations.importTariff,
             conv_observations.sunlight,
             conv_observations.humidity,
         )
+    
+    def set_conversion(self, conversion: int) -> None:
+        """
+        Set a conversion value.
+        Conversion can't be zero.
+        """
+        position = self.get_position()
+        if position < 0:
+            assert 1 <= conversion and conversion <= -position, f"Invalid conversion value: {conversion=}, {position=}"
+        elif position > 0:
+            assert -position <= conversion and conversion <= -1, f"Invalid conversion value: {conversion=}, {position=}"
+        else:
+            assert False, f"ERROR: {position=}, cannot do conversion"
+
+        self.conversions = conversion
 
 
 logger = Logger()
@@ -524,6 +540,8 @@ class Trader:
         orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
         orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
         orders[ORCHIDS] = orchid_trader.manager.pending_orders()
+
+        conversions = managers[ORCHIDS].conversions
 
         for product in PRODUCTS:
             new_trader_data.update(managers[product].get_new_trader_data())
