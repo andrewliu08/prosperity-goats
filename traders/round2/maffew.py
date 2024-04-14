@@ -500,7 +500,31 @@ class OrchidTrader:
         conv_bid_price = bid_price - export_tariff - transport_fees
         conv_ask_price = ask_price + import_tariff + transport_fees
         position = self.manager.get_position()
+        vwap = self.manager.get_VWAP()
 
+        # Arbitrage
+        if position != 0:
+            self.manager.set_conversion(-position)
+        else:
+            exp_pos = position
+            sell_orders = self.manager.get_sell_orders()
+            for price, qty in sell_orders.items():
+                if conv_bid_price - price >= 1: # buy at price now, sell at conv_bid_price next time_step
+                    bid_quantity = min(self.manager.max_buy_amount(exp_pos), -qty)
+                    self.manager.place_buy_order(price, bid_quantity)
+                    exp_pos += bid_quantity
+
+            self.manager.place_buy_order(round(conv_bid_price - 1), self.manager.max_buy_amount(exp_pos))
+
+            exp_pos = position
+            buy_orders = self.manager.get_buy_orders()
+            for price, qty in buy_orders.items():
+                if price - conv_ask_price >= 0.7: # sell at price now, buy at conv_ask_price next time_step
+                    ask_quantity = max(self.manager.max_sell_amount(exp_pos), -qty)
+                    self.manager.place_sell_order(price, ask_quantity)
+                    exp_pos += ask_quantity
+
+            self.manager.place_sell_order(round(conv_ask_price + 1), self.manager.max_sell_amount(exp_pos))
 
 class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
@@ -518,7 +542,7 @@ class Trader:
             manager=managers[STARFRUIT],
         )
         orchid_configs = OrchidConfigs(
-            Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
+            Listing(symbol=ORCHIDS, product=ORCHIDS, denomination=SEASHELLS),
             manager=managers[ORCHIDS],
         )
 
@@ -537,8 +561,8 @@ class Trader:
         conversions = 0
         new_trader_data = {}
 
-        orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
-        orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
+        # orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
+        # orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
         orders[ORCHIDS] = orchid_trader.manager.pending_orders()
 
         conversions = managers[ORCHIDS].conversions
