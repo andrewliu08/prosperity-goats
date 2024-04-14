@@ -19,12 +19,14 @@ import numpy as np
 SEASHELLS = "SEASHELLS"
 AMETHYSTS = "AMETHYSTS"
 STARFRUIT = "STARFRUIT"
+ORCHIDS = "ORCHIDS"
 
-PRODUCTS = [AMETHYSTS, STARFRUIT]
+PRODUCTS = [AMETHYSTS, STARFRUIT, ORCHIDS]
 
 POSITION_LIMITS = {
     AMETHYSTS: 20,
     STARFRUIT: 20,
+    ORCHIDS: 100,
 }
 
 
@@ -159,6 +161,7 @@ class Manager:
         self.product = product
         self.state = state
         self.orders = []
+        self.conversions = 0
         self.trader_data: Dict[str, Any] = (
             json.loads(self.state.traderData) if self.state.traderData else {}
         )
@@ -302,6 +305,39 @@ class Manager:
         """
         return self.new_trader_data
 
+    def get_conv_observations(
+        self,
+    ) -> tuple[float, float, float, float, float, float, float]:
+        """
+        Returns the observation data.
+        (bid_price, ask_price, transport_fees, export_tariff, import_tariff, sunlight, humidity)
+        """
+        conv_observations = self.state.observations.conversionObservations[self.product]
+        return (
+            conv_observations.bidPrice,
+            conv_observations.askPrice,
+            conv_observations.transportFees,
+            conv_observations.exportTariff,
+            conv_observations.importTariff,
+            conv_observations.sunlight,
+            conv_observations.humidity,
+        )
+    
+    def set_conversion(self, conversion: int) -> None:
+        """
+        Set a conversion value.
+        Conversion can't be zero.
+        """
+        position = self.get_position()
+        if position < 0:
+            assert 1 <= conversion and conversion <= -position, f"Invalid conversion value: {conversion=}, {position=}"
+        elif position > 0:
+            assert -position <= conversion and conversion <= -1, f"Invalid conversion value: {conversion=}, {position=}"
+        else:
+            assert False, f"ERROR: {position=}, cannot do conversion"
+
+        self.conversions = conversion
+
 
 logger = Logger()
 
@@ -312,31 +348,17 @@ class AmethystConfigs:
         listing: Listing,
         manager: Manager,
         price: int,
-        mm_spread: int,
-        quantity: int,
     ):
         self.listing = listing
         self.manager = manager
         self.price = price
-        self.mm_spread = mm_spread
-        self.quantity = quantity
 
 
 class AmethystTrader:
     def __init__(self, configs: AmethystConfigs) -> None:
         self.product = configs.listing.product
-        self.price = configs.price
-        self.mm_spread = configs.mm_spread
-        self.quantity = configs.quantity
         self.manager = configs.manager
-
-    # def position_adjustment(self, adjustments: list[int], position: int):
-    #     lim = POSITION_LIMITS[self.product]
-    #     cutoffs = np.linspace(-lim, lim, len(adjustments) + 1)
-    #     for adj, cutoff in zip(adjustments, cutoffs[1:-1]):
-    #         if position <= cutoff:
-    #             return adj
-    #     return adjustments[-1]
+        self.price = configs.price
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         position = self.manager.get_position()
@@ -350,7 +372,7 @@ class AmethystTrader:
                 if buy_amount > 0:
                     self.manager.place_buy_order(price, buy_amount)
                     exp_pos += buy_amount
-        
+
         max_buy_amount = self.manager.max_buy_amount(exp_pos)
         best_buy_order = self.manager.get_best_buy_order()
         best_buy_price = best_buy_order[0] if best_buy_order is not None else self.price
@@ -359,7 +381,7 @@ class AmethystTrader:
                 price = min(best_buy_price + 2, self.price - 1)
                 self.manager.place_buy_order(price, max_buy_amount)
                 exp_pos += max_buy_amount
-            elif position > 15: 
+            elif position > 15:
                 price = min(best_buy_price, self.price - 1)
                 self.manager.place_buy_order(price, max_buy_amount)
                 exp_pos += max_buy_amount
@@ -380,7 +402,9 @@ class AmethystTrader:
 
         max_sell_amount = self.manager.max_sell_amount(exp_pos)
         best_sell_order = self.manager.get_best_sell_order()
-        best_sell_price = best_sell_order[0] if best_sell_order is not None else self.price
+        best_sell_price = (
+            best_sell_order[0] if best_sell_order is not None else self.price
+        )
         if max_sell_amount < 0:
             if position > 0:
                 price = max(best_sell_price - 2, self.price + 1)
@@ -395,63 +419,26 @@ class AmethystTrader:
                 self.manager.place_sell_order(price, max_sell_amount)
                 exp_pos += max_sell_amount
 
+
 class StarfruitConfigs:
     def __init__(
         self,
         listing: Listing,
         manager: Manager,
-        # mm_spread: int,
-        # inventory_adjustment: float,
-        coefs: list[float],
-        intercept: float,
-        star_price_data_dim: int,
     ):
         self.listing = listing
         self.manager = manager
-
-        # Maker:
-        # self.mm_spread = mm_spread
-        # self.inventory_adjustment = inventory_adjustment
-
-        # Linear Regression:
-        self.coefs = coefs
-        self.intercept = intercept
-        self.star_price_data_dim = star_price_data_dim
 
 
 class StarfruitTrader:
     def __init__(self, configs: StarfruitConfigs) -> None:
         self.product = configs.listing.product
         self.manager = configs.manager
-        # self.mm_spread = configs.mm_spread
-        # self.inventory_adjustment = configs.inventory_adjustment
-        self.coefs = configs.coefs
-        self.intercept = configs.intercept
-        self.star_price_data_dim = configs.star_price_data_dim
-
-    # def calc_reservation_price(self, price: int, position: int) -> int:
-    #     reservation_price = price - int(position * self.inventory_adjustment)
-    #     return reservation_price
 
     def run(self, state: TradingState) -> None:
-        # # Linear Regression
-        # trader_data = self.manager.trader_data
-
-        # star_price_data = trader_data.get("star_price_data", [])
-        # if len(star_price_data) == self.star_price_data_dim:
-        #     star_price_data.pop(0)
-        # star_price_data.append(self.manager.get_mid_price())
-        # self.manager.add_trader_data("star_price_data", star_price_data)
-        # if len(star_price_data) < self.star_price_data_dim:
-        #     return
-        
-        # future_price = self.intercept
-        # for i in range(self.star_price_data_dim):
-        #     future_price += self.coefs[i] * star_price_data[i]
-        # future_price = int(round(future_price))
-
         future_price = self.manager.get_VWAP()
         position = self.manager.get_position()
+
         # Buy Orders
         exp_pos = self.manager.get_position()
         sell_orders = self.manager.get_sell_orders()
@@ -473,16 +460,47 @@ class StarfruitTrader:
         buy_orders = self.manager.get_buy_orders()
         for price, qty in buy_orders.items():
             if price > future_price or (position > 0 and price == future_price):
-                sell_amount = max(self.manager.max_sell_amount(exp_pos), qty)
+                sell_amount = max(self.manager.max_sell_amount(exp_pos), -qty)
                 if sell_amount < 0:
                     self.manager.place_sell_order(price, sell_amount)
                     exp_pos += sell_amount
-        
+
         price, qty = self.manager.get_best_sell_order()
         price = max(price - 1, future_price + 1)
         sell_amount = self.manager.max_sell_amount(exp_pos)
         if sell_amount < 0:
             self.manager.place_sell_order(price, sell_amount)
+
+
+class OrchidConfigs:
+    def __init__(
+        self,
+        listing: Listing,
+        manager: Manager,
+    ):
+        self.listing = listing
+        self.manager = manager
+
+
+class OrchidTrader:
+    def __init__(self, configs: OrchidConfigs) -> None:
+        self.product = configs.listing.product
+        self.manager = configs.manager
+
+    def run(self, state: TradingState) -> None:
+        (
+            bid_price,
+            ask_price,
+            transport_fees,
+            export_tariff,
+            import_tariff,
+            sunlight,
+            humidity,
+        ) = self.manager.get_conv_observations()
+        conv_bid_price = bid_price - export_tariff - transport_fees
+        conv_ask_price = ask_price + import_tariff + transport_fees
+        position = self.manager.get_position()
+
 
 class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
@@ -494,24 +512,25 @@ class Trader:
             Listing(symbol=AMETHYSTS, product=AMETHYSTS, denomination=SEASHELLS),
             manager=managers[AMETHYSTS],
             price=10_000,
-            mm_spread=2,
-            quantity=5,
         )
         starfruit_configs = StarfruitConfigs(
             Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
             manager=managers[STARFRUIT],
-            coefs=[-0.01869561, 0.0455032 , 0.16316049, 0.8090892],
-            intercept=4.481696494462085,
-            star_price_data_dim=4,
+        )
+        orchid_configs = OrchidConfigs(
+            Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
+            manager=managers[ORCHIDS],
         )
 
         # initialize traders
         amethyst_trader = AmethystTrader(amethyst_configs)
         starfruit_trader = StarfruitTrader(starfruit_configs)
+        orchid_trader = OrchidTrader(orchid_configs)
 
         # run traders
         amethyst_trader.run(state)
         starfruit_trader.run(state)
+        orchid_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}
@@ -520,6 +539,9 @@ class Trader:
 
         orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
         orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
+        orders[ORCHIDS] = orchid_trader.manager.pending_orders()
+
+        conversions = managers[ORCHIDS].conversions
 
         for product in PRODUCTS:
             new_trader_data.update(managers[product].get_new_trader_data())
