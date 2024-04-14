@@ -1,4 +1,6 @@
 import json
+import jsonpickle
+import math
 from collections import OrderedDict
 from datamodel import (
     Listing,
@@ -28,6 +30,8 @@ POSITION_LIMITS = {
     STARFRUIT: 20,
     ORCHIDS: 100,
 }
+
+INVENTORY_COST = 0.1
 
 
 class Logger:
@@ -163,7 +167,7 @@ class Manager:
         self.orders = []
         self.conversions = 0
         self.trader_data: Dict[str, Any] = (
-            json.loads(self.state.traderData) if self.state.traderData else {}
+            jsonpickle.decode(self.state.traderData) if self.state.traderData else {}
         )
         self.new_trader_data: Dict[str, Any] = {}
 
@@ -322,7 +326,7 @@ class Manager:
             conv_observations.sunlight,
             conv_observations.humidity,
         )
-    
+
     def set_conversion(self, conversion: int) -> None:
         """
         Set a conversion value.
@@ -330,9 +334,13 @@ class Manager:
         """
         position = self.get_position()
         if position < 0:
-            assert 1 <= conversion and conversion <= -position, f"Invalid conversion value: {conversion=}, {position=}"
+            assert (
+                1 <= conversion and conversion <= -position
+            ), f"Invalid conversion value: {conversion=}, {position=}"
         elif position > 0:
-            assert -position <= conversion and conversion <= -1, f"Invalid conversion value: {conversion=}, {position=}"
+            assert (
+                -position <= conversion and conversion <= -1
+            ), f"Invalid conversion value: {conversion=}, {position=}"
         else:
             assert False, f"ERROR: {position=}, cannot do conversion"
 
@@ -343,12 +351,7 @@ logger = Logger()
 
 
 class AmethystConfigs:
-    def __init__(
-        self,
-        listing: Listing,
-        manager: Manager,
-        price: int,
-    ):
+    def __init__(self, listing: Listing, manager: Manager, price: int):
         self.listing = listing
         self.manager = manager
         self.price = price
@@ -421,11 +424,7 @@ class AmethystTrader:
 
 
 class StarfruitConfigs:
-    def __init__(
-        self,
-        listing: Listing,
-        manager: Manager,
-    ):
+    def __init__(self, listing: Listing, manager: Manager):
         self.listing = listing
         self.manager = manager
 
@@ -473,19 +472,23 @@ class StarfruitTrader:
 
 
 class OrchidConfigs:
-    def __init__(
-        self,
-        listing: Listing,
-        manager: Manager,
-    ):
+    def __init__(self, listing: Listing, arb_margin: float, manager: Manager):
         self.listing = listing
+        self.arb_margin = arb_margin
         self.manager = manager
 
 
 class OrchidTrader:
     def __init__(self, configs: OrchidConfigs) -> None:
         self.product = configs.listing.product
+        self.arb_margin = configs.arb_margin
         self.manager = configs.manager
+
+    def calc_inventory_cost(self, quantity: int, t: int) -> float:
+        # Short positions don't incur inventory costs
+        if quantity < 0:
+            return 0
+        return INVENTORY_COST * quantity * t
 
     def run(self, state: TradingState) -> None:
         (
@@ -500,6 +503,49 @@ class OrchidTrader:
         conv_bid_price = bid_price - export_tariff - transport_fees
         conv_ask_price = ask_price + import_tariff + transport_fees
         position = self.manager.get_position()
+        vwap = self.manager.get_VWAP()
+
+        # Arbitrage
+        if position != 0:
+            self.manager.set_conversion(-position)
+        else:
+            exp_pos = position
+            sell_orders = self.manager.get_sell_orders()
+            for price, qty in sell_orders.items():
+                bid_quantity = min(self.manager.max_buy_amount(exp_pos), -qty)
+                inventory_cost = self.calc_inventory_cost(bid_quantity, t=1)
+                # buy at price now, sell at conv_bid_price next time_step
+                if conv_bid_price - price >= self.arb_margin + inventory_cost:
+                    self.manager.place_buy_order(price, bid_quantity)
+                    exp_pos += bid_quantity
+
+            # maker order expecting that conv_bid_price won't change much
+            inventory_cost = self.calc_inventory_cost(
+                self.manager.max_buy_amount(exp_pos), t=1
+            )
+            self.manager.place_buy_order(
+                math.floor(conv_bid_price - self.arb_margin - inventory_cost),
+                self.manager.max_buy_amount(exp_pos),
+            )
+
+            exp_pos = position
+            buy_orders = self.manager.get_buy_orders()
+            for price, qty in buy_orders.items():
+                ask_quantity = max(self.manager.max_sell_amount(exp_pos), -qty)
+                inventory_cost = self.calc_inventory_cost(ask_quantity, t=1)
+                # sell at price now, buy at conv_ask_price next time_step
+                if price - conv_ask_price >= self.arb_margin + inventory_cost:
+                    self.manager.place_sell_order(price, ask_quantity)
+                    exp_pos += ask_quantity
+
+            # maker order expecting that conv_ask_price won't change much
+            inventory_cost = self.calc_inventory_cost(
+                self.manager.max_sell_amount(exp_pos), t=1
+            )
+            self.manager.place_sell_order(
+                math.ceil(conv_ask_price + self.arb_margin + inventory_cost),
+                self.manager.max_sell_amount(exp_pos),
+            )
 
 
 class Trader:
@@ -519,6 +565,7 @@ class Trader:
         )
         orchid_configs = OrchidConfigs(
             Listing(symbol=ORCHIDS, product=ORCHIDS, denomination=SEASHELLS),
+            arb_margin=1.2,
             manager=managers[ORCHIDS],
         )
 
@@ -537,15 +584,15 @@ class Trader:
         conversions = 0
         new_trader_data = {}
 
-        orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
-        orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
+        # orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
+        # orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
         orders[ORCHIDS] = orchid_trader.manager.pending_orders()
 
         conversions = managers[ORCHIDS].conversions
 
         for product in PRODUCTS:
             new_trader_data.update(managers[product].get_new_trader_data())
-        new_trader_data = json.dumps(new_trader_data)
+        new_trader_data = jsonpickle.encode(new_trader_data)
 
         logger.flush(state, orders, conversions, new_trader_data)
         return orders, conversions, new_trader_data

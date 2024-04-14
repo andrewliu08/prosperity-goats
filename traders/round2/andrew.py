@@ -1,4 +1,5 @@
 import json
+import jsonpickle
 import math
 from collections import OrderedDict
 from datamodel import (
@@ -166,7 +167,7 @@ class Manager:
         self.orders = []
         self.conversions = 0
         self.trader_data: Dict[str, Any] = (
-            json.loads(self.state.traderData) if self.state.traderData else {}
+            jsonpickle.decode(self.state.traderData) if self.state.traderData else {}
         )
         self.new_trader_data: Dict[str, Any] = {}
 
@@ -533,9 +534,12 @@ class OrchidTrader:
                     exp_pos += bid_quantity
 
             # maker order expecting that conv_bid_price won't change much
-            inventory_cost = self.calc_inventory_cost(self.manager.max_buy_amount(exp_pos), t=1)
+            inventory_cost = self.calc_inventory_cost(
+                self.manager.max_buy_amount(exp_pos), t=1
+            )
             self.manager.place_buy_order(
-                math.floor(conv_bid_price - self.arb_margin - inventory_cost), self.manager.max_buy_amount(exp_pos)
+                math.floor(conv_bid_price - self.arb_margin - inventory_cost),
+                self.manager.max_buy_amount(exp_pos),
             )
 
             exp_pos = position
@@ -549,9 +553,12 @@ class OrchidTrader:
                     exp_pos += ask_quantity
 
             # maker order expecting that conv_ask_price won't change much
-            inventory_cost = self.calc_inventory_cost(self.manager.max_sell_amount(exp_pos), t=1)
+            inventory_cost = self.calc_inventory_cost(
+                self.manager.max_sell_amount(exp_pos), t=1
+            )
             self.manager.place_sell_order(
-                math.ceil(conv_ask_price + self.arb_margin + inventory_cost), self.manager.max_sell_amount(exp_pos)
+                math.ceil(conv_ask_price + self.arb_margin + inventory_cost),
+                self.manager.max_sell_amount(exp_pos),
             )
 
 
@@ -572,7 +579,7 @@ class Trader:
         )
         orchid_configs = OrchidConfigs(
             Listing(symbol=ORCHIDS, product=ORCHIDS, denomination=SEASHELLS),
-            arb_margin=1.3,
+            arb_margin=1.2,
             manager=managers[ORCHIDS],
         )
 
@@ -599,7 +606,7 @@ class Trader:
 
         for product in PRODUCTS:
             new_trader_data.update(managers[product].get_new_trader_data())
-        new_trader_data = json.dumps(new_trader_data)
+        new_trader_data = jsonpickle.encode(new_trader_data)
 
         logger.flush(state, orders, conversions, new_trader_data)
         return orders, conversions, new_trader_data
