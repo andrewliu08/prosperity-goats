@@ -518,7 +518,7 @@ class Trader:
             manager=managers[STARFRUIT],
         )
         orchid_configs = OrchidConfigs(
-            Listing(symbol=STARFRUIT, product=STARFRUIT, denomination=SEASHELLS),
+            Listing(symbol=ORCHIDS, product=ORCHIDS, denomination=SEASHELLS),
             manager=managers[ORCHIDS],
         )
 
