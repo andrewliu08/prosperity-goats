@@ -166,13 +166,14 @@ class Manager:
         self.state = state
         self.orders = []
         self.conversions = 0
+        self.position = self.state.position.get(self.product, 0)
         self.trader_data: Dict[str, Any] = (
             jsonpickle.decode(self.state.traderData) if self.state.traderData else {}
         )
         self.new_trader_data: Dict[str, Any] = {}
 
     def get_position(self) -> int:
-        return self.state.position.get(self.product, 0)
+        return self.position
 
     def get_buy_orders(self) -> OrderedDict[int, int]:
         """
@@ -345,6 +346,7 @@ class Manager:
             assert False, f"ERROR: {position=}, cannot do conversion"
 
         self.conversions = conversion
+        self.position += conversion
 
 
 logger = Logger()
@@ -510,10 +512,10 @@ class OrchidTrader:
             self.manager.set_conversion(-position)
 
         # Taker orders
-        exp_pos = position
+        bid_pos = self.manager.get_position()
         sell_orders = self.manager.get_sell_orders()
         for price, qty in sell_orders.items():
-            bid_quantity = min(self.manager.max_buy_amount(exp_pos), -qty)
+            bid_quantity = min(self.manager.max_buy_amount(bid_pos), -qty)
             inventory_cost = self.calc_inventory_cost(bid_quantity, t=1)
             # buy at price now, sell at conv_bid_price next time_step
             if (
@@ -521,10 +523,10 @@ class OrchidTrader:
                 and bid_quantity > 0
             ):
                 self.manager.place_buy_order(price, bid_quantity)
-                exp_pos += bid_quantity
+                bid_pos += bid_quantity
 
         # maker order expecting that conv_bid_price won't change much
-        maker_buy_amount = self.manager.max_buy_amount(exp_pos)
+        maker_buy_amount = self.manager.max_buy_amount(bid_pos)
         if maker_buy_amount > 0:
             inventory_cost = self.calc_inventory_cost(maker_buy_amount, t=1)
             self.manager.place_buy_order(
@@ -532,10 +534,10 @@ class OrchidTrader:
                 maker_buy_amount,
             )
 
-        exp_pos = position
+        ask_pos = self.manager.get_position()
         buy_orders = self.manager.get_buy_orders()
         for price, qty in buy_orders.items():
-            ask_quantity = max(self.manager.max_sell_amount(exp_pos), -qty)
+            ask_quantity = max(self.manager.max_sell_amount(ask_pos), -qty)
             inventory_cost = self.calc_inventory_cost(ask_quantity, t=1)
             # sell at price now, buy at conv_ask_price next time_step
             if (
@@ -543,10 +545,10 @@ class OrchidTrader:
                 and ask_quantity < 0
             ):
                 self.manager.place_sell_order(price, ask_quantity)
-                exp_pos += ask_quantity
+                ask_pos += ask_quantity
 
         # maker order expecting that conv_ask_price won't change much
-        maker_sell_amount = self.manager.max_sell_amount(exp_pos)
+        maker_sell_amount = self.manager.max_sell_amount(ask_pos)
         if maker_sell_amount < 0:
             inventory_cost = self.calc_inventory_cost(maker_sell_amount, t=1)
             self.manager.place_sell_order(
