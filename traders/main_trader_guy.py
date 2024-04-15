@@ -166,13 +166,14 @@ class Manager:
         self.state = state
         self.orders = []
         self.conversions = 0
+        self.position = self.state.position.get(self.product, 0)
         self.trader_data: Dict[str, Any] = (
             jsonpickle.decode(self.state.traderData) if self.state.traderData else {}
         )
         self.new_trader_data: Dict[str, Any] = {}
 
     def get_position(self) -> int:
-        return self.state.position.get(self.product, 0)
+        return self.position
 
     def get_buy_orders(self) -> OrderedDict[int, int]:
         """
@@ -345,6 +346,7 @@ class Manager:
             assert False, f"ERROR: {position=}, cannot do conversion"
 
         self.conversions = conversion
+        self.position += conversion
 
 
 logger = Logger()
@@ -488,7 +490,7 @@ class OrchidTrader:
         # Short positions don't incur inventory costs
         if quantity < 0:
             return 0
-        return INVENTORY_COST * quantity * t
+        return INVENTORY_COST * t
 
     def run(self, state: TradingState) -> None:
         (
@@ -500,51 +502,58 @@ class OrchidTrader:
             sunlight,
             humidity,
         ) = self.manager.get_conv_observations()
+
         conv_bid_price = bid_price - export_tariff - transport_fees
         conv_ask_price = ask_price + import_tariff + transport_fees
         position = self.manager.get_position()
-        vwap = self.manager.get_VWAP()
 
         # Arbitrage
         if position != 0:
             self.manager.set_conversion(-position)
-        else:
-            exp_pos = position
-            sell_orders = self.manager.get_sell_orders()
-            for price, qty in sell_orders.items():
-                bid_quantity = min(self.manager.max_buy_amount(exp_pos), -qty)
-                inventory_cost = self.calc_inventory_cost(bid_quantity, t=1)
-                # buy at price now, sell at conv_bid_price next time_step
-                if conv_bid_price - price >= self.arb_margin + inventory_cost:
-                    self.manager.place_buy_order(price, bid_quantity)
-                    exp_pos += bid_quantity
 
-            # maker order expecting that conv_bid_price won't change much
-            inventory_cost = self.calc_inventory_cost(
-                self.manager.max_buy_amount(exp_pos), t=1
-            )
+        # Taker orders
+        bid_pos = self.manager.get_position()
+        sell_orders = self.manager.get_sell_orders()
+        for price, qty in sell_orders.items():
+            bid_quantity = min(self.manager.max_buy_amount(bid_pos), -qty)
+            inventory_cost = self.calc_inventory_cost(bid_quantity, t=1)
+            # buy at price now, sell at conv_bid_price next time_step
+            if (
+                conv_bid_price - price >= self.arb_margin + inventory_cost
+                and bid_quantity > 0
+            ):
+                self.manager.place_buy_order(price, bid_quantity)
+                bid_pos += bid_quantity
+
+        # maker order expecting that conv_bid_price won't change much
+        maker_buy_amount = self.manager.max_buy_amount(bid_pos)
+        if maker_buy_amount > 0:
+            inventory_cost = self.calc_inventory_cost(maker_buy_amount, t=1)
             self.manager.place_buy_order(
                 math.floor(conv_bid_price - self.arb_margin - inventory_cost),
-                self.manager.max_buy_amount(exp_pos),
+                maker_buy_amount,
             )
 
-            exp_pos = position
-            buy_orders = self.manager.get_buy_orders()
-            for price, qty in buy_orders.items():
-                ask_quantity = max(self.manager.max_sell_amount(exp_pos), -qty)
-                inventory_cost = self.calc_inventory_cost(ask_quantity, t=1)
-                # sell at price now, buy at conv_ask_price next time_step
-                if price - conv_ask_price >= self.arb_margin + inventory_cost:
-                    self.manager.place_sell_order(price, ask_quantity)
-                    exp_pos += ask_quantity
+        ask_pos = self.manager.get_position()
+        buy_orders = self.manager.get_buy_orders()
+        for price, qty in buy_orders.items():
+            ask_quantity = max(self.manager.max_sell_amount(ask_pos), -qty)
+            inventory_cost = self.calc_inventory_cost(ask_quantity, t=1)
+            # sell at price now, buy at conv_ask_price next time_step
+            if (
+                price - conv_ask_price >= self.arb_margin + inventory_cost
+                and ask_quantity < 0
+            ):
+                self.manager.place_sell_order(price, ask_quantity)
+                ask_pos += ask_quantity
 
-            # maker order expecting that conv_ask_price won't change much
-            inventory_cost = self.calc_inventory_cost(
-                self.manager.max_sell_amount(exp_pos), t=1
-            )
+        # maker order expecting that conv_ask_price won't change much
+        maker_sell_amount = self.manager.max_sell_amount(ask_pos)
+        if maker_sell_amount < 0:
+            inventory_cost = self.calc_inventory_cost(maker_sell_amount, t=1)
             self.manager.place_sell_order(
                 math.ceil(conv_ask_price + self.arb_margin + inventory_cost),
-                self.manager.max_sell_amount(exp_pos),
+                maker_sell_amount,
             )
 
 
@@ -584,8 +593,8 @@ class Trader:
         conversions = 0
         new_trader_data = {}
 
-        # orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
-        # orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
+        orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
+        orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
         orders[ORCHIDS] = orchid_trader.manager.pending_orders()
 
         conversions = managers[ORCHIDS].conversions
