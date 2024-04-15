@@ -502,14 +502,19 @@ class OrchidTrader:
             sunlight,
             humidity,
         ) = self.manager.get_conv_observations()
-        conv_bid_price = bid_price - export_tariff - transport_fees
-        conv_ask_price = ask_price + import_tariff + transport_fees
+
+        indicator_shift = 0
+        if (humidity < 60 or humidity > 80) and sunlight < 2000:
+            indicator_shift = 4
+
+        conv_bid_price = bid_price - export_tariff - transport_fees + indicator_shift
+        conv_ask_price = ask_price + import_tariff + transport_fees + indicator_shift
         position = self.manager.get_position()
-        vwap = self.manager.get_VWAP()
 
         # Arbitrage
         if position != 0:
-            self.manager.set_conversion(-position)
+            if indicator_shift == 0:
+                self.manager.set_conversion(-position)
 
         # Taker orders
         bid_pos = self.manager.get_position()
