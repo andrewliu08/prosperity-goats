@@ -490,7 +490,7 @@ class OrchidTrader:
         # Short positions don't incur inventory costs
         if quantity < 0:
             return 0
-        return INVENTORY_COST * quantity * t
+        return INVENTORY_COST * t
 
     def run(self, state: TradingState) -> None:
         (
