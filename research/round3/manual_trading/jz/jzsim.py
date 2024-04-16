@@ -21,8 +21,8 @@ data = {
 def run_simulation():
     df = pd.DataFrame(data)
     base_treasure = 7500
-    num_players = 10000
-    num_iterations = 1000  # Total number of iterations
+    num_players = 1000
+    num_iterations = 10000  # Total number of iterations
 
     # Initialize cumulative player counts
     cumulative_player_counts = pd.Series(0, index=df.index)
@@ -38,7 +38,7 @@ def run_simulation():
         df['Value Per Player'] = df['Total Treasure'] / df['Effective Hunters']
         total_value = df['Value Per Player'].sum()
         # df['Probabilities'] = df['Value Per Player'] / total_value
-        df['Probabilities'] = (df['Value Per Player'] / total_value) ** 2  # adding bias to probabilities
+        df['Probabilities'] = (df['Value Per Player'] / total_value) ** 8  # adding bias to probabilities
         df['Probabilities'] /= df['Probabilities'].sum()  # Normalizing again
         return df['Probabilities'].values
 
