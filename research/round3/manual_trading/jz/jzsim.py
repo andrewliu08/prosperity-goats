@@ -21,8 +21,8 @@ data = {
 def run_simulation():
     df = pd.DataFrame(data)
     base_treasure = 7500
-    num_players = 1000
-    num_iterations = 10000  # Total number of iterations
+    num_players = 10000
+    num_iterations = 1000  # Total number of iterations
 
     # Initialize cumulative player counts
     cumulative_player_counts = pd.Series(0, index=df.index)

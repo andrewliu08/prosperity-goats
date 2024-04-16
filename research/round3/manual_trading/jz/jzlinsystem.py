@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 data = {
     "Multiplier": [
@@ -46,3 +47,12 @@ for i in range(25):
         sum+=x[i]
 print(sum)
 print("Solution:", x)
+
+# Plotting the solution vector x
+plt.figure(figsize=(10, 5))
+plt.plot(x, marker='o')
+plt.title('Solution Vector x')
+plt.xlabel('Index')
+plt.ylabel('Value of x[i]')
+plt.grid(True)
+plt.show()
