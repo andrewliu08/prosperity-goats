@@ -35,7 +35,7 @@ for i in range(0, 24):
 
 for i in range(0, 25):
     matrix[24][i] = 1
-b[24] = 1
+b[24] = 100
 
 x = np.linalg.solve(matrix, b)
 
