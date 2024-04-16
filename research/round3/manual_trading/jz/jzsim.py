@@ -33,11 +33,13 @@ def run_simulation():
             df['Player Percentage'] = player_counts / num_players * 100
             df['Effective Hunters'] = df['Hunters'] + df['Player Percentage']
         else:
-            df['Effective Hunters'] = df['Hunters'] + 2
+            df['Effective Hunters'] = df['Hunters'] + 4
 
         df['Value Per Player'] = df['Total Treasure'] / df['Effective Hunters']
         total_value = df['Value Per Player'].sum()
-        df['Probabilities'] = df['Value Per Player'] / total_value
+        # df['Probabilities'] = df['Value Per Player'] / total_value
+        df['Probabilities'] = (df['Value Per Player'] / total_value) ** 2  # adding bias to probabilities
+        df['Probabilities'] /= df['Probabilities'].sum()  # Normalizing again
         return df['Probabilities'].values
 
     for i in range(num_iterations):
