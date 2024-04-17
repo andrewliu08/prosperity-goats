@@ -22,16 +22,26 @@ SEASHELLS = "SEASHELLS"
 AMETHYSTS = "AMETHYSTS"
 STARFRUIT = "STARFRUIT"
 ORCHIDS = "ORCHIDS"
+CHOCOLATE = "CHOCOLATE"
+STRAWBERRIES = "STRAWBERRIES"
+ROSES = "ROSES"
+GIFT_BASKET = "GIFT_BASKET"
 
-PRODUCTS = [AMETHYSTS, STARFRUIT, ORCHIDS]
+PRODUCTS = [AMETHYSTS, STARFRUIT, ORCHIDS, CHOCOLATE, STRAWBERRIES, ROSES, GIFT_BASKET]
 
 POSITION_LIMITS = {
     AMETHYSTS: 20,
     STARFRUIT: 20,
     ORCHIDS: 100,
+    CHOCOLATE: 250,
+    STRAWBERRIES: 350,
+    ROSES: 60,
+    GIFT_BASKET: 60,
 }
 
 INVENTORY_COST = 0.1
+
+BASKET_COMPOSITION = {CHOCOLATE: 4, STRAWBERRIES: 6, ROSES: 1}
 
 
 class Logger:
@@ -351,7 +361,7 @@ class Manager:
 
 logger = Logger()
 
-
+# -------------------------------- ROUND 1 --------------------------------
 class AmethystConfigs:
     def __init__(self, listing: Listing, manager: Manager, price: int):
         self.listing = listing
@@ -473,6 +483,7 @@ class StarfruitTrader:
             self.manager.place_sell_order(price, sell_amount)
 
 
+# -------------------------------- ROUND 2 --------------------------------
 class OrchidConfigs:
     def __init__(self, listing: Listing, arb_margin: float, manager: Manager):
         self.listing = listing
@@ -557,6 +568,72 @@ class OrchidTrader:
             )
 
 
+# -------------------------------- ROUND 3 --------------------------------
+class BasketPairConfigs:
+    def __init__(
+        self,
+        managers: dict[Product, Manager],
+        mean_diff: float,
+        trade_signal: float,
+    ):
+        self.managers = managers
+        self.mean_diff = mean_diff
+        self.trade_signal = trade_signal
+
+
+class BasketPairTrader:
+    def __init__(self, configs: OrchidConfigs) -> None:
+        self.managers = configs.managers
+        self.mean_diff = configs.mean_diff
+        self.trade_signal = configs.trade_signal
+
+    def summed_basket_price(self, prices: dict[Product, float]) -> Optional[float]:
+        if any(price is None for price in prices.values()):
+            return None
+        return sum(
+            prices[product] * BASKET_COMPOSITION[product]
+            for product in BASKET_COMPOSITION
+        )
+
+    def basket_diff(self, prices: dict[Product, float]) -> Optional[float]:
+        summed_price = self.summed_basket_price(prices)
+        if summed_price is None or prices[GIFT_BASKET] is None:
+            return None
+        return prices[GIFT_BASKET] - summed_price
+
+    def run(self, state: TradingState) -> None:
+        prices = {
+            product: manager.get_VWAP() for product, manager in self.managers.items()
+        }
+        positions = {
+            product: manager.get_position()
+            for product, manager in self.managers.items()
+        }
+
+        price_diff = self.basket_diff(prices)
+        if price_diff is None:
+            return
+
+        # if basket price - basket component price - constant > std * 0.5
+        if price_diff - self.mean_diff > self.trade_signal:
+            ask_quantity = -(POSITION_LIMITS[GIFT_BASKET] + positions[GIFT_BASKET])
+            buy_orders = self.managers[GIFT_BASKET].get_buy_orders()
+            worst_price = next(reversed(buy_orders)) if buy_orders else None
+            if worst_price is None:
+                return
+            
+            if ask_quantity < 0:
+                self.managers[GIFT_BASKET].place_sell_order(worst_price, ask_quantity)
+        elif price_diff - self.mean_diff < -self.trade_signal:
+            bid_quantity = POSITION_LIMITS[GIFT_BASKET] - positions[GIFT_BASKET]
+            sell_orders = self.managers[GIFT_BASKET].get_sell_orders()
+            worst_price = next(reversed(sell_orders)) if sell_orders else None
+            if worst_price is None:
+                return
+
+            if bid_quantity > 0:
+                self.managers[GIFT_BASKET].place_buy_order(worst_price, bid_quantity)
+
 class Trader:
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         # initialize managers
@@ -577,16 +654,24 @@ class Trader:
             arb_margin=1.2,
             manager=managers[ORCHIDS],
         )
+        round_3_products = [CHOCOLATE, STRAWBERRIES, ROSES, GIFT_BASKET]
+        basket_pair_configs = BasketPairConfigs(
+            managers={product: managers[product] for product in round_3_products},
+            mean_diff=379.486,
+            trade_signal=76.413 * 0.5,
+        )
 
         # initialize traders
         amethyst_trader = AmethystTrader(amethyst_configs)
         starfruit_trader = StarfruitTrader(starfruit_configs)
         orchid_trader = OrchidTrader(orchid_configs)
+        basket_pair_trader = BasketPairTrader(basket_pair_configs)
 
         # run traders
         amethyst_trader.run(state)
         starfruit_trader.run(state)
         orchid_trader.run(state)
+        basket_pair_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}
@@ -596,6 +681,8 @@ class Trader:
         orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
         orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
         orders[ORCHIDS] = orchid_trader.manager.pending_orders()
+        for product in round_3_products:
+            orders[product] = basket_pair_trader.managers[product].pending_orders()
 
         conversions = managers[ORCHIDS].conversions
 
