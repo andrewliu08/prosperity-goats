@@ -643,7 +643,7 @@ class BasketPairTrader:
 
     def run(self, state: TradingState) -> None:
         prices = {
-            product: manager.get_mid_price() for product, manager in self.managers.items()
+            product: manager.get_VWAP() for product, manager in self.managers.items()
         }
         positions = {
             product: manager.get_position()
@@ -669,7 +669,7 @@ class BasketPairTrader:
             # qty = min(quantities.values())
             # if qty > 0:
             #     for product in BASKET_COMPOSITION:
-            #         sell_orders = self.managers[GIFT_BASKET].get_sell_orders()
+            #         sell_orders = self.managers[product].get_sell_orders()
             #         worst_price = next(reversed(sell_orders)) if sell_orders else None
             #         if worst_price is None:
             #             return
@@ -684,11 +684,11 @@ class BasketPairTrader:
             if bid_quantity > 0:
                 self.managers[GIFT_BASKET].place_buy_order(worst_price, bid_quantity)
             
-            # quantities = {product: -(POSITION_LIMITS[GIFT_BASKET] + positions[GIFT_BASKET]) // qty for product, qty in BASKET_COMPOSITION.items()}
+            # quantities = {product: -((POSITION_LIMITS[product] + positions[product]) // qty) for product, qty in BASKET_COMPOSITION.items()}
             # qty = max(quantities.values())
             # if qty < 0:
             #     for product in BASKET_COMPOSITION:
-            #         buy_orders = self.managers[GIFT_BASKET].get_buy_orders()
+            #         buy_orders = self.managers[product].get_buy_orders()
             #         worst_price = next(reversed(buy_orders)) if buy_orders else None
             #         if worst_price is None:
             #             return
