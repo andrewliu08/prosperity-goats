@@ -716,9 +716,9 @@ class Trader:
         round_3_products = [CHOCOLATE, STRAWBERRIES, ROSES, GIFT_BASKET]
         basket_pair_configs = BasketPairConfigs(
             managers={product: managers[product] for product in round_3_products},
-            berry_data_dim=20,
-            position_open=-0.0495710081909422 + 0.075 * 0.9370793306864552,
-            position_close=-0.0495710081909422 + 0.075 * 0.9370793306864552,
+            berry_data_dim=25,
+            position_open=-0.06306734329308888 + 0.05 * 1.0535987849332602,
+            position_close=-0.06306734329308888 + 0.05 * 1.0535987849332602,
             trade_amount=100,
             price_diff=1,
         )
