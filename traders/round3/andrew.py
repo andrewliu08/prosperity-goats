@@ -224,6 +224,26 @@ class Manager:
             return None
 
         return list(sell_orders.items())[0]
+    
+    def get_worst_buy_order(self) -> Optional[tuple[int, int]]:
+        """
+        Returns the price, quantity for the worst buy order for the product.
+        """
+        buy_orders = self.get_buy_orders()
+        if len(buy_orders) == 0:
+            return None
+
+        return list(buy_orders.items())[-1]
+    
+    def get_worst_sell_order(self) -> Optional[tuple[int, int]]:
+        """
+        Returns the (price, quantity) for the worst sell order for the product.
+        """
+        sell_orders = self.get_sell_orders()
+        if len(sell_orders) == 0:
+            return None
+
+        return list(sell_orders.items())[-1]
 
     def place_order(self, price: int, quantity: int) -> None:
         """
@@ -603,9 +623,10 @@ class BasketPairTrader:
         )
 
     def basket_diff(self, prices: dict[Product, float]) -> Optional[float]:
-        summed_price = self.summed_basket_price(prices)
-        if summed_price is None or prices[GIFT_BASKET] is None:
-            return None
+        # summed_price = self.summed_basket_price(prices)
+        # if summed_price is None or prices[GIFT_BASKET] is None:
+        #     return None
+        summed_price = prices[CHOCOLATE] * 3.84280387 + prices[STRAWBERRIES] * 6.17207762 + prices[ROSES] * 1.05295733 + 162.57251083700976
         return prices[GIFT_BASKET] - summed_price
 
     def calc_order_quantities(
@@ -620,10 +641,12 @@ class BasketPairTrader:
             )
             # short the components
             for product in BASKET_COMPOSITION:
+                # if product == "CHOCOLATE":
                 quantities[product] = max(
                     -self.basket_order_quantity * BASKET_COMPOSITION[product],
                     -self.max_basket_position * BASKET_COMPOSITION[product]
                     - positions[product],
+                    self.managers[product].max_sell_amount(),
                 )
         else:
             # short the basket
@@ -637,11 +660,12 @@ class BasketPairTrader:
                     self.basket_order_quantity * BASKET_COMPOSITION[product],
                     self.max_basket_position * BASKET_COMPOSITION[product]
                     - positions[product],
+                    self.managers[product].max_buy_amount(),
                 )
 
         return quantities
 
-    def run(self, state: TradingState) -> None:
+    def run_basket(self, state: TradingState) -> None:
         prices = {
             product: manager.get_VWAP() for product, manager in self.managers.items()
         }
@@ -656,34 +680,152 @@ class BasketPairTrader:
 
         # Price diff is high, short the pair by shorting the basket
         # and longing the components
-        if price_diff > self.mean_diff + self.trade_signal:
+        # if price_diff > self.mean_diff + self.trade_signal:
+        std = 75.81995910676206
+        if price_diff > std * 0.45:
             quantities = self.calc_order_quantities(positions, long_pair=False)
             if quantities[GIFT_BASKET] < 0:
                 self.managers[GIFT_BASKET].place_sell_order(
-                    math.ceil(prices[GIFT_BASKET] + self.spreads[GIFT_BASKET]),
+                    # math.ceil(prices[GIFT_BASKET] + self.spreads[GIFT_BASKET]),
+                    self.managers[GIFT_BASKET].get_worst_buy_order()[0],
                     quantities[GIFT_BASKET],
                 )
-            for product in BASKET_COMPOSITION:
-                if quantities[product] > 0:
-                    self.managers[product].place_buy_order(
-                        math.floor(prices[product] - self.spreads[product]),
-                        quantities[product],
-                    )
+            # for product in BASKET_COMPOSITION:
+            #     if quantities[product] > 0:
+            #         self.managers[product].place_buy_order(
+            #             # math.floor(prices[product] - self.spreads[product]),
+            #             self.managers[product].get_worst_sell_order()[0],
+            #             quantities[product],
+            #         )
         # Price diff is low, long the pair by longing the basket
         # and shorting the components
-        elif price_diff < self.mean_diff - self.trade_signal:
+        # elif price_diff < self.mean_diff - self.trade_signal:
+        elif price_diff < -std * 0.45:
             quantities = self.calc_order_quantities(positions, long_pair=True)
             if quantities[GIFT_BASKET] > 0:
                 self.managers[GIFT_BASKET].place_buy_order(
-                    math.floor(prices[GIFT_BASKET] - self.spreads[GIFT_BASKET]),
+                    # math.floor(prices[GIFT_BASKET] - self.spreads[GIFT_BASKET]),
+                    self.managers[GIFT_BASKET].get_worst_sell_order()[0],
                     quantities[GIFT_BASKET],
                 )
-            for product in BASKET_COMPOSITION:
-                if quantities[product] < 0:
-                    self.managers[product].place_sell_order(
-                        math.ceil(prices[product] + self.spreads[product]),
-                        quantities[product],
-                    )
+            # for product in BASKET_COMPOSITION:
+            #     if quantities[product] < 0:
+            #         self.managers[product].place_sell_order(
+            #             # math.ceil(prices[product] + self.spreads[product]),
+            #             self.managers[product].get_worst_buy_order()[0],
+            #             quantities[product],
+            #         )
+
+    def run_strawberry(self) -> None:
+        self.berry_data_dim=25
+        self.berry_position_open=-0.06306734329308888 + 0.05 * 1.0535987849332602
+        self.berry_position_close=-0.06306734329308888 + 0.05 * 1.0535987849332602
+        self.berry_trade_amount=100
+        self.berry_price_diff=1
+
+        prices = {
+            product: manager.get_VWAP() for product, manager in self.managers.items()
+        }
+        positions = {
+            product: manager.get_position()
+            for product, manager in self.managers.items()
+        }
+
+        running_avg = None
+        trader_data = self.managers[STRAWBERRIES].trader_data
+        berry_data = trader_data.get("berry_data", None)
+        if berry_data is None:
+            berry_data = []
+        elif len(berry_data) == self.berry_data_dim:
+            running_avg = sum(berry_data) / self.berry_data_dim
+            berry_data = berry_data[1:]
+        berry_data.append(prices[STRAWBERRIES])
+        self.managers[STRAWBERRIES].add_trader_data("berry_data", berry_data)
+
+        if running_avg is None:
+            return
+
+        if prices[STRAWBERRIES] - running_avg > self.berry_position_open:
+            quantity = min(
+                self.berry_trade_amount, self.managers[STRAWBERRIES].max_buy_amount()
+            )
+            if quantity > 0:
+                self.managers[STRAWBERRIES].place_buy_order(
+                    prices[STRAWBERRIES] - self.berry_price_diff, quantity
+                )
+        elif (
+            positions[STRAWBERRIES] > 0
+            and prices[STRAWBERRIES] - running_avg < self.berry_position_close
+        ):
+            quantity = -positions[STRAWBERRIES]
+            buy_orders = self.managers[STRAWBERRIES].get_buy_orders()
+            worst_price = next(reversed(buy_orders))
+            self.managers[STRAWBERRIES].place_sell_order(worst_price, quantity)
+        elif prices[STRAWBERRIES] - running_avg < -self.berry_position_open:
+            quantity = max(
+                -self.berry_trade_amount, self.managers[STRAWBERRIES].max_sell_amount()
+            )
+            if quantity < 0:
+                self.managers[STRAWBERRIES].place_sell_order(
+                    prices[STRAWBERRIES] + self.berry_price_diff, quantity
+                )
+        elif (
+            positions[STRAWBERRIES] < 0
+            and prices[STRAWBERRIES] - running_avg > -self.berry_position_close
+        ):
+            quantity = -positions[STRAWBERRIES]
+            sell_orders = self.managers[STRAWBERRIES].get_sell_orders()
+            worst_price = next(iter(sell_orders))
+            self.managers[STRAWBERRIES].place_buy_order(worst_price, quantity)
+    
+    def run_chocolate_rose(self, state: TradingState) -> None:
+        prices = {
+            product: manager.get_VWAP() for product, manager in self.managers.items()
+        }
+        positions = {
+            product: manager.get_position()
+            for product, manager in self.managers.items()
+        }
+
+        if prices[CHOCOLATE] is None or prices[ROSES] is None:
+            return
+        price_diff = prices[ROSES] - (prices[CHOCOLATE] * 1.342728 + 3878.738377)
+
+        std = 90.9085376833297
+        # Price diff is high, short the pair by shorting roses and longing chocolate
+        if price_diff > std * 0.42:
+            sell_quantity = self.managers[ROSES].max_sell_amount()
+            if sell_quantity < 0:
+                self.managers[ROSES].place_sell_order(
+                    self.managers[ROSES].get_worst_buy_order()[0],
+                    sell_quantity
+                )
+            buy_quantity = self.managers[CHOCOLATE].max_buy_amount()
+            if buy_quantity > 0:
+                self.managers[CHOCOLATE].place_buy_order(
+                    self.managers[CHOCOLATE].get_worst_sell_order()[0],
+                    buy_quantity
+                )
+        # Price diff is low, long the pair by longing roses and shorting chocolate
+        elif price_diff < -std * 0.42:
+            buy_quantity = self.managers[ROSES].max_buy_amount()
+            if buy_quantity > 0:
+                self.managers[ROSES].place_buy_order(
+                    self.managers[ROSES].get_worst_sell_order()[0],
+                    buy_quantity
+                )
+            sell_quantity = self.managers[CHOCOLATE].max_sell_amount()
+            if sell_quantity < 0:
+                self.managers[CHOCOLATE].place_sell_order(
+                    self.managers[CHOCOLATE].get_worst_buy_order()[0],
+                    sell_quantity
+                )
+
+
+    def run(self, state: TradingState) -> None:
+        self.run_basket(state)
+        self.run_strawberry()
+        self.run_chocolate_rose(state)
 
 
 class Trader:
@@ -710,9 +852,9 @@ class Trader:
         basket_pair_configs = BasketPairConfigs(
             managers={product: managers[product] for product in round_3_products},
             mean_diff=379.486,
-            trade_signal=76.413,
-            max_basket_position=58,
-            basket_order_quantity=10,
+            trade_signal=76.413 * 1.45,
+            max_basket_position=60,
+            basket_order_quantity=58,
             spreads={product: 1 for product in round_3_products},
         )
 
@@ -723,9 +865,9 @@ class Trader:
         basket_pair_trader = BasketPairTrader(basket_pair_configs)
 
         # run traders
-        # amethyst_trader.run(state)
-        # starfruit_trader.run(state)
-        # orchid_trader.run(state)
+        amethyst_trader.run(state)
+        starfruit_trader.run(state)
+        orchid_trader.run(state)
         basket_pair_trader.run(state)
 
         # create orders, conversions and trader_data
@@ -733,9 +875,9 @@ class Trader:
         conversions = 0
         new_trader_data = {}
 
-        # orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
-        # orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
-        # orders[ORCHIDS] = orchid_trader.manager.pending_orders()
+        orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
+        orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
+        orders[ORCHIDS] = orchid_trader.manager.pending_orders()
         for product in round_3_products:
             orders[product] = basket_pair_trader.managers[product].pending_orders()
 
