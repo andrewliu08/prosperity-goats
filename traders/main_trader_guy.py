@@ -754,9 +754,9 @@ class Trader:
         basket_pair_trader = BasketPairTrader(basket_pair_configs)
 
         # run traders
-        # amethyst_trader.run(state)
-        # starfruit_trader.run(state)
-        # orchid_trader.run(state)
+        amethyst_trader.run(state)
+        starfruit_trader.run(state)
+        orchid_trader.run(state)
         basket_pair_trader.run(state)
 
         # create orders, conversions and trader_data
