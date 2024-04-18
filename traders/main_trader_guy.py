@@ -658,7 +658,7 @@ class Trader:
         basket_pair_configs = BasketPairConfigs(
             managers={product: managers[product] for product in round_3_products},
             mean_diff=379.486,
-            trade_signal=76.413 * 0.5,
+            trade_signal=76.413 * 0.45,
         )
 
         # initialize traders
@@ -668,9 +668,9 @@ class Trader:
         basket_pair_trader = BasketPairTrader(basket_pair_configs)
 
         # run traders
-        amethyst_trader.run(state)
-        starfruit_trader.run(state)
-        orchid_trader.run(state)
+        # amethyst_trader.run(state)
+        # starfruit_trader.run(state)
+        # orchid_trader.run(state)
         basket_pair_trader.run(state)
 
         # create orders, conversions and trader_data
