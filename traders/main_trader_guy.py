@@ -26,8 +26,20 @@ CHOCOLATE = "CHOCOLATE"
 STRAWBERRIES = "STRAWBERRIES"
 ROSES = "ROSES"
 GIFT_BASKET = "GIFT_BASKET"
+COCONUT = "COCONUT"
+COCONUT_COUPON = "COCONUT_COUPON"
 
-PRODUCTS = [AMETHYSTS, STARFRUIT, ORCHIDS, CHOCOLATE, STRAWBERRIES, ROSES, GIFT_BASKET]
+PRODUCTS = [
+    AMETHYSTS,
+    STARFRUIT,
+    ORCHIDS,
+    CHOCOLATE,
+    STRAWBERRIES,
+    ROSES,
+    GIFT_BASKET,
+    COCONUT,
+    COCONUT_COUPON,
+]
 
 POSITION_LIMITS = {
     AMETHYSTS: 20,
@@ -37,6 +49,8 @@ POSITION_LIMITS = {
     STRAWBERRIES: 350,
     ROSES: 60,
     GIFT_BASKET: 60,
+    COCONUT: 300,
+    COCONUT_COUPON: 600,
 }
 
 INVENTORY_COST = 0.1
@@ -847,7 +861,10 @@ class BasketPairTrader:
                     self.managers[CHOCOLATE].get_worst_buy_order()[0], sell_quantity
                 )
         # Price is below close signal, close the position by buying roses and selling chocolate
-        elif price_diff - self.chocolate_rose_mean_diff < self.chocolate_rose_close_signal:
+        elif (
+            price_diff - self.chocolate_rose_mean_diff
+            < self.chocolate_rose_close_signal
+        ):
             buy_quantity = -positions[ROSES]
             sell_quantity = -positions[CHOCOLATE]
             if buy_quantity > 0:
@@ -859,7 +876,10 @@ class BasketPairTrader:
                     self.managers[CHOCOLATE].get_worst_buy_order()[0], sell_quantity
                 )
         # Price is above close signal, close the position by selling roses and buying chocolate
-        elif price_diff - self.chocolate_rose_mean_diff > -self.chocolate_rose_close_signal:
+        elif (
+            price_diff - self.chocolate_rose_mean_diff
+            > -self.chocolate_rose_close_signal
+        ):
             sell_quantity = -positions[ROSES]
             buy_quantity = -positions[CHOCOLATE]
             if sell_quantity < 0:
@@ -875,6 +895,23 @@ class BasketPairTrader:
         self.run_basket(state)
         self.run_strawberry()
         self.run_chocolate_rose(state)
+
+
+# -------------------------------- ROUND 4 --------------------------------
+class CoconutConfigs:
+    def __init__(
+        self,
+        managers: Manager,
+    ):
+        self.managers = managers
+
+
+class CoconutTrader:
+    def __init__(self, configs: CoconutConfigs) -> None:
+        self.managers = configs.managers
+
+    def run(self, state: TradingState) -> None:
+        pass
 
 
 class Trader:
@@ -923,18 +960,24 @@ class Trader:
             chocolate_rose_open_signal=90.9085376833297 * 0.7,
             chocolate_rose_close_signal=90.9085376833297 * 0.01,
         )
+        round_4_products = [COCONUT, COCONUT_COUPON]
+        coconut_configs = CoconutConfigs(
+            managers={product: managers[product] for product in round_4_products},
+        )
 
         # initialize traders
         amethyst_trader = AmethystTrader(amethyst_configs)
         starfruit_trader = StarfruitTrader(starfruit_configs)
         orchid_trader = OrchidTrader(orchid_configs)
         basket_pair_trader = BasketPairTrader(basket_pair_configs)
+        coconut_trader = CoconutTrader(coconut_configs)
 
         # run traders
         amethyst_trader.run(state)
         starfruit_trader.run(state)
         orchid_trader.run(state)
         basket_pair_trader.run(state)
+        coconut_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}
@@ -946,6 +989,8 @@ class Trader:
         orders[ORCHIDS] = orchid_trader.manager.pending_orders()
         for product in round_3_products:
             orders[product] = basket_pair_trader.managers[product].pending_orders()
+        for product in round_4_products:
+            orders[product] = coconut_trader.managers[product].pending_orders()
 
         conversions = managers[ORCHIDS].conversions
 
