@@ -34,7 +34,6 @@ POSITION_LIMITS = {
 
 INVENTORY_COST = 0.1
 
-
 class Logger:
     def __init__(self) -> None:
         self.logs = ""
@@ -523,111 +522,114 @@ class OrchidTrader:
         #linear regression
 
         #retrieve the dataframe from the last state
-        if 'orchid_data' in state.traderData:
-            data = state.traderData.get('orchid_data')
-        else:
-            #initialize if it doesn't exist
-            allColumns = ['transport_fees', 'export_tariffs','import_tariffs', 'sunlight', 'humidity']
-            data = pd.dataFrame(columns=allColumns)
+        # if 'orchid_data' in state.traderData:
+        #     data = state.traderData.get('orchid_data')
+        # else:
+        #     #initialize if it doesn't exist
+        #     allColumns = ['transport_fees', 'export_tariffs','import_tariffs', 'sunlight', 'humidity']
+        #     data = pd.DataFrame(columns=allColumns)
         
-        #add the new row of the current timestep
-        current_timestep_info = {'transport_fees': transport_fees, 'export_tariffs': export_tariff,'import_tariffs': import_tariff, 'sunlight': sunlight, 'humidity': humidity}
-        data = data.append(current_timestep_info, ignore_index=True)
+        # #add the new row of the current timestep
+        # current_timestep_info = {'transport_fees': transport_fees, 'export_tariffs': export_tariff,'import_tariffs': import_tariff, 'sunlight': sunlight, 'humidity': humidity}
+        # data = data.loc[len(data.index)] = current_timestep_info
 
-        #only ever keep the necessary 7500 rows of information
-        while len(data) > 7500:
-            data = data.drop(data.index[0])
+        # #only ever keep the necessary 7500 rows of information
+        # while len(data) > 7500:
+        #     data = data.drop(data.index[0])
 
-        self.manager.add_trader_data('orchid_data',data)
-        #dictionary of desired features and their coefficients
-        feature_coefficient = {
-            'hum_prod_dec': 48.67376,
-            'sun_prod_dec': 0,
-            'prod_hum_1': 629.3902,
-            'prod_sun_1': -79.54414,
-            'hum_1': 70218.88,
-            'sun_1': 7648.580,
-            'prod_hum_2': 1271.859,
-            'prod_sun_2': -226.6559,
-            'hum_2': -87715.21,
-            'sun_2': 3452.863,
-            'prod_hum_3': 1079.101,
-            'prod_sun_3': -308.7377,
-            'hum_3': 1938220,
-            'sun_3': -2822.175,
-            'prod_hum_4': 923.3421,
-            'prod_sun_4': -292.5504,
-            'hum_4': -2337665,
-            'sun_4': -3052.217,
-            'prod_hum_5': 911.7624,
-            'prod_sun_5': -343.2527,
-            'hum_5': 712721.9,
-            'sun_5': 13940.49,
-            'prod_hum_6': 1194.891,
-            'prod_sun_6': -236.9766,
-            'hum_6': -1025548,
-            'sun_6': -21352.43,
-            'prod_hum_7': 1775.479,
-            'prod_sun_7': -212.6642,
-            'hum_7': 337239.7,
-            'sun_7': 9190.124,
-            'prod_hum_8': 754.0357e+02,
-            'prod_sun_8': -249065.8,
-            'hum_8': 366166.6,
-            'sun_8': -16096.62,
-            'prod_hum_9': -185.7959,
-            'prod_sun_9': 466185.4,
-            'hum_9': -1283584,
-            'sun_9': 7063.233,
-            'prod_hum_10': -438.1893,
-            'prod_sun_10': -64.62283,
-            'hum_10': 453478.7,
-            'sun_10': -2320.270,
-            'prod_hum_11': -314.2999,
-            'prod_sun_11': 0,
-            'hum_11': 243749.6,
-            'sun_11': 1349.266,
-            'prod_hum_12': -550.1919,
-            'prod_sun_12': -31.62999,
-            'hum_12': -167669.1,
-            'sun_12': 17059.70,
-            'prod_hum_13': -529.1117,
-            'prod_sun_13': -30.30185,
-            'hum_13': 283223.7,
-            'sun_13': -6111.550,
-            'prod_hum_14': -21.94254,
-            'prod_sun_14': 0,
-            'hum_14': -1374792,
-            'sun_14': 4995.459,
-            'prod_hum_15': 100.2936,
-            'prod_sun_15': -28.14696,
-            'hum_15': 26.68270,
-            'sun_15': 0,
-        }
+        # self.manager.add_trader_data('orchid_data',data)
+        # #dictionary of desired features and their coefficients
+        # feature_coefficient = {
+        #     'hum_prod_dec': 48.67376,
+        #     'sun_prod_dec': 0,
+        #     'prod_hum_1': 629.3902,
+        #     'prod_sun_1': -79.54414,
+        #     'hum_1': 70218.88,
+        #     'sun_1': 7648.580,
+        #     'prod_hum_2': 1271.859,
+        #     'prod_sun_2': -226.6559,
+        #     'hum_2': -87715.21,
+        #     'sun_2': 3452.863,
+        #     'prod_hum_3': 1079.101,
+        #     'prod_sun_3': -308.7377,
+        #     'hum_3': 1938220,
+        #     'sun_3': -2822.175,
+        #     'prod_hum_4': 923.3421,
+        #     'prod_sun_4': -292.5504,
+        #     'hum_4': -2337665,
+        #     'sun_4': -3052.217,
+        #     'prod_hum_5': 911.7624,
+        #     'prod_sun_5': -343.2527,
+        #     'hum_5': 712721.9,
+        #     'sun_5': 13940.49,
+        #     'prod_hum_6': 1194.891,
+        #     'prod_sun_6': -236.9766,
+        #     'hum_6': -1025548,
+        #     'sun_6': -21352.43,
+        #     'prod_hum_7': 1775.479,
+        #     'prod_sun_7': -212.6642,
+        #     'hum_7': 337239.7,
+        #     'sun_7': 9190.124,
+        #     'prod_hum_8': 754.0357e+02,
+        #     'prod_sun_8': -249065.8,
+        #     'hum_8': 366166.6,
+        #     'sun_8': -16096.62,
+        #     'prod_hum_9': -185.7959,
+        #     'prod_sun_9': 466185.4,
+        #     'hum_9': -1283584,
+        #     'sun_9': 7063.233,
+        #     'prod_hum_10': -438.1893,
+        #     'prod_sun_10': -64.62283,
+        #     'hum_10': 453478.7,
+        #     'sun_10': -2320.270,
+        #     'prod_hum_11': -314.2999,
+        #     'prod_sun_11': 0,
+        #     'hum_11': 243749.6,
+        #     'sun_11': 1349.266,
+        #     'prod_hum_12': -550.1919,
+        #     'prod_sun_12': -31.62999,
+        #     'hum_12': -167669.1,
+        #     'sun_12': 17059.70,
+        #     'prod_hum_13': -529.1117,
+        #     'prod_sun_13': -30.30185,
+        #     'hum_13': 283223.7,
+        #     'sun_13': -6111.550,
+        #     'prod_hum_14': -21.94254,
+        #     'prod_sun_14': 0,
+        #     'hum_14': -1374792,
+        #     'sun_14': 4995.459,
+        #     'prod_hum_15': 100.2936,
+        #     'prod_sun_15': -28.14696,
+        #     'hum_15': 26.68270,
+        #     'sun_15': 0,
+        # }
 
-        #code to construct all the linear regression features
-        data['hum_prod_dec'] = np.where((data["HUMIDITY"] < 60) | (data["HUMIDITY"] > 80), abs(data["HUMIDITY"] - 70) / 5.0 * 2.0 - 4, 0)
-        data["sun_prod_dec"] = np.where(data["SUNLIGHT"] < 2500, abs(data["SUNLIGHT"] - 2500) / 60 * 4, 0)
-        window_size = 500
-        for window in range(15):
-            start = window * window_size
-            end = start + window_size
-            if f'prod_hum_{window+1}' in feature_coefficient:
-                data[f'prod_hum_{window+1}'] = data['hum_prod_dec'].shift(start).rolling(window=window_size, min_periods=1).mean()
-            if f'prod_sun_{window+1}' in feature_coefficient:
-                data[f'prod_sun_{window+1}'] = data['sun_prod_dec'].shift(start).rolling(window=window_size, min_periods=1).mean()
-            if f'hum_{window+1}' in feature_coefficient:
-                data[f'hum_{window+1}'] = data['HUMIDITY'].shift(start).rolling(window=window_size, min_periods=1).mean()
-            if f'sun_{window+1}' in feature_coefficient:
-                data[f'sun_{window+1}'] = data['SUNLIGHT'].shift(start).rolling(window=window_size, min_periods=1).mean()
+        # #code to construct all the linear regression features
+        # data['hum_prod_dec'] = np.where((data["HUMIDITY"] < 60) | (data["HUMIDITY"] > 80), abs(data["HUMIDITY"] - 70) / 5.0 * 2.0 - 4, 0)
+        # data["sun_prod_dec"] = np.where(data["SUNLIGHT"] < 2500, abs(data["SUNLIGHT"] - 2500) / 60 * 4, 0)
+        # window_size = 500
+        # for window in range(15):
+        #     start = window * window_size
+        #     end = start + window_size
+        #     if f'prod_hum_{window+1}' in feature_coefficient:
+        #         data[f'prod_hum_{window+1}'] = data['hum_prod_dec'].shift(start).rolling(window=window_size, min_periods=1).mean()
+        #     if f'prod_sun_{window+1}' in feature_coefficient:
+        #         data[f'prod_sun_{window+1}'] = data['sun_prod_dec'].shift(start).rolling(window=window_size, min_periods=1).mean()
+        #     if f'hum_{window+1}' in feature_coefficient:
+        #         data[f'hum_{window+1}'] = data['HUMIDITY'].shift(start).rolling(window=window_size, min_periods=1).mean()
+        #     if f'sun_{window+1}' in feature_coefficient:
+        #         data[f'sun_{window+1}'] = data['SUNLIGHT'].shift(start).rolling(window=window_size, min_periods=1).mean()
 
-        #get the row that we are currently on, in order to predict, and initialize price
-        current_row = len(data) - 1
-        predicted_price = 0
+        # #get the row that we are currently on, in order to predict, and initialize price
+        # current_row = len(data) - 1
+    
+        # predicted_price = 0
+        # #loop through all features, multiply by coefficient and add to predicted price
+        # for feature in feature_coefficient:
+        #     predicted_price += data.at[current_row, feature] * feature_coefficient.get(feature)
 
-        #loop through all features, multiply by coefficient and add to predicted price
-        for feature in feature_coefficient:
-            predicted_price += data.at[current_row, feature] * feature_coefficient.get(feature)
+        # conv_bid_price = predicted_price - export_tariff - transport_fees
+        # conv_ask_price = predicted_price + import_tariff + transport_fees 
 
         # Arbitrage
         if position != 0:
