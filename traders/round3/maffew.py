@@ -16,6 +16,7 @@ from datamodel import (
 from typing import Any, Dict, Optional
 
 import numpy as np
+import pandas as pd
 
 
 SEASHELLS = "SEASHELLS"
@@ -362,7 +363,6 @@ class Manager:
 logger = Logger()
 
 
-# -------------------------------- ROUND 1 --------------------------------
 class AmethystConfigs:
     def __init__(self, listing: Listing, manager: Manager, price: int):
         self.listing = listing
@@ -484,7 +484,6 @@ class StarfruitTrader:
             self.manager.place_sell_order(price, sell_amount)
 
 
-# -------------------------------- ROUND 2 --------------------------------
 class OrchidConfigs:
     def __init__(self, listing: Listing, arb_margin: float, manager: Manager):
         self.listing = listing
@@ -569,41 +568,34 @@ class OrchidTrader:
             )
 
 
-# -------------------------------- ROUND 3 --------------------------------
 class BasketPairConfigs:
     def __init__(
         self,
         managers: dict[Product, Manager],
-        # basket
-        mean_diff: float,
-        trade_signal: float,
-        # strawberries
         berry_data_dim: int,
-        berry_position_open: float,
-        berry_position_close: float,
-        berry_trade_amount: int,
-        berry_price_diff: int,
+        position_open: float,
+        position_close: float,
+        trade_amount: int,
+        price_diff: float,
     ):
         self.managers = managers
-        self.mean_diff = mean_diff
-        self.trade_signal = trade_signal
         self.berry_data_dim = berry_data_dim
-        self.berry_position_open = berry_position_open
-        self.berry_position_close = berry_position_close
-        self.berry_trade_amount = berry_trade_amount
-        self.berry_price_diff = berry_price_diff
+        self.position_open = position_open
+        self.position_close = position_close
+        self.trade_amount = trade_amount
+        self.price_diff = price_diff
+
 
 
 class BasketPairTrader:
     def __init__(self, configs: OrchidConfigs) -> None:
         self.managers = configs.managers
-        self.mean_diff = configs.mean_diff
-        self.trade_signal = configs.trade_signal
         self.berry_data_dim = configs.berry_data_dim
-        self.berry_position_open = configs.berry_position_open
-        self.berry_position_close = configs.berry_position_close
-        self.berry_trade_amount = configs.berry_trade_amount
-        self.berry_price_diff = configs.berry_price_diff
+        self.position_open = configs.position_open
+        self.position_close = configs.position_close
+        self.trade_amount = configs.trade_amount
+        self.price_diff = configs.price_diff
+
 
     def summed_basket_price(self, prices: dict[Product, float]) -> Optional[float]:
         if any(price is None for price in prices.values()):
@@ -619,7 +611,40 @@ class BasketPairTrader:
             return None
         return prices[GIFT_BASKET] - summed_price
 
-    def run_basket(self) -> None:
+    def calc_order_quantities(
+        self, positions: dict[Product, int], long_pair: bool
+    ) -> dict[Product, int]:
+        quantities = {}
+        if long_pair:
+            # long the basket
+            quantities[GIFT_BASKET] = min(
+                self.basket_order_quantity,
+                self.max_basket_position - positions[GIFT_BASKET],
+            )
+            # short the components
+            for product in BASKET_COMPOSITION:
+                quantities[product] = max(
+                    -self.basket_order_quantity * BASKET_COMPOSITION[product],
+                    -self.max_basket_position * BASKET_COMPOSITION[product]
+                    - positions[product],
+                )
+        else:
+            # short the basket
+            quantities[GIFT_BASKET] = max(
+                -self.basket_order_quantity,
+                -self.max_basket_position - positions[GIFT_BASKET],
+            )
+            # long the components
+            for product in BASKET_COMPOSITION:
+                quantities[product] = min(
+                    self.basket_order_quantity * BASKET_COMPOSITION[product],
+                    self.max_basket_position * BASKET_COMPOSITION[product]
+                    - positions[product],
+                )
+
+        return quantities
+
+    def run(self, state: TradingState) -> None:
         prices = {
             product: manager.get_VWAP() for product, manager in self.managers.items()
         }
@@ -628,89 +653,44 @@ class BasketPairTrader:
             for product, manager in self.managers.items()
         }
 
-        price_diff = self.basket_diff(prices)
-        if price_diff is None:
-            return
-
-        # if basket price - basket component price - constant > std * 0.5
-        if price_diff - self.mean_diff > self.trade_signal:
-            ask_quantity = -(POSITION_LIMITS[GIFT_BASKET] + positions[GIFT_BASKET])
-            buy_orders = self.managers[GIFT_BASKET].get_buy_orders()
-            worst_price = next(reversed(buy_orders)) if buy_orders else None
-            if worst_price is None:
-                return
-
-            if ask_quantity < 0:
-                self.managers[GIFT_BASKET].place_sell_order(worst_price, ask_quantity)
-        elif price_diff - self.mean_diff < -self.trade_signal:
-            bid_quantity = POSITION_LIMITS[GIFT_BASKET] - positions[GIFT_BASKET]
-            sell_orders = self.managers[GIFT_BASKET].get_sell_orders()
-            worst_price = next(reversed(sell_orders)) if sell_orders else None
-            if worst_price is None:
-                return
-
-            if bid_quantity > 0:
-                self.managers[GIFT_BASKET].place_buy_order(worst_price, bid_quantity)
-
-    def run_strawberry(self) -> None:
-        prices = {
-            product: manager.get_VWAP() for product, manager in self.managers.items()
-        }
-        positions = {
-            product: manager.get_position()
-            for product, manager in self.managers.items()
-        }
+        trader_data = self.managers[GIFT_BASKET].trader_data
+        berry_data = trader_data.get("berry_data", None)
 
         running_avg = None
-        trader_data = self.managers[STRAWBERRIES].trader_data
-        berry_data = trader_data.get("berry_data", None)
         if berry_data is None:
             berry_data = []
         elif len(berry_data) == self.berry_data_dim:
             running_avg = sum(berry_data) / self.berry_data_dim
             berry_data = berry_data[1:]
+
+        # berry_data.reset_index(drop=True, inplace=True)
+        # berry_data.loc[len(berry_data)] = prices[STRAWBERRIES]
+        # berry_data = pd.concat([berry_data, pd.Series([prices[STRAWBERRIES]])], ignore_index=True)
         berry_data.append(prices[STRAWBERRIES])
         self.managers[STRAWBERRIES].add_trader_data("berry_data", berry_data)
 
         if running_avg is None:
             return
 
-        if prices[STRAWBERRIES] - running_avg > self.berry_position_open:
-            quantity = min(
-                self.berry_trade_amount, self.managers[STRAWBERRIES].max_buy_amount()
-            )
+        if prices[STRAWBERRIES] - running_avg > self.position_open:
+            quantity = min(self.trade_amount, self.managers[STRAWBERRIES].max_buy_amount())
             if quantity > 0:
-                self.managers[STRAWBERRIES].place_buy_order(
-                    prices[STRAWBERRIES] - self.berry_price_diff, quantity
-                )
-        elif (
-            positions[STRAWBERRIES] > 0
-            and prices[STRAWBERRIES] - running_avg < self.berry_position_close
-        ):
+                self.managers[STRAWBERRIES].place_buy_order(prices[STRAWBERRIES] - self.price_diff, quantity)
+        elif positions[STRAWBERRIES] > 0 and prices[STRAWBERRIES] - running_avg < self.position_close:
             quantity = -positions[STRAWBERRIES]
             buy_orders = self.managers[STRAWBERRIES].get_buy_orders()
             worst_price = next(reversed(buy_orders))
             self.managers[STRAWBERRIES].place_sell_order(worst_price, quantity)
-        elif prices[STRAWBERRIES] - running_avg < -self.berry_position_open:
-            quantity = max(
-                -self.berry_trade_amount, self.managers[STRAWBERRIES].max_sell_amount()
-            )
+        elif prices[STRAWBERRIES] - running_avg < -self.position_open:
+            quantity = max(-self.trade_amount, self.managers[STRAWBERRIES].max_sell_amount())
             if quantity < 0:
-                self.managers[STRAWBERRIES].place_sell_order(
-                    prices[STRAWBERRIES] + self.berry_price_diff, quantity
-                )
-        elif (
-            positions[STRAWBERRIES] < 0
-            and prices[STRAWBERRIES] - running_avg > -self.berry_position_close
-        ):
+                self.managers[STRAWBERRIES].place_sell_order(prices[STRAWBERRIES] + self.price_diff, quantity)
+        elif positions[STRAWBERRIES] < 0 and prices[STRAWBERRIES] - running_avg > -self.position_close:
             quantity = -positions[STRAWBERRIES]
             sell_orders = self.managers[STRAWBERRIES].get_sell_orders()
             worst_price = next(iter(sell_orders))
             self.managers[STRAWBERRIES].place_buy_order(worst_price, quantity)
 
-    def run(self, state: TradingState) -> None:
-        self.run_basket()
-        self.run_strawberry()
 
 
 class Trader:
@@ -736,15 +716,11 @@ class Trader:
         round_3_products = [CHOCOLATE, STRAWBERRIES, ROSES, GIFT_BASKET]
         basket_pair_configs = BasketPairConfigs(
             managers={product: managers[product] for product in round_3_products},
-            # basket
-            mean_diff=379.486,
-            trade_signal=76.413 * 0.45,
-            # strawberries
             berry_data_dim=25,
-            berry_position_open=-0.06306734329308888 + 0.05 * 1.0535987849332602,
-            berry_position_close=-0.06306734329308888 + 0.05 * 1.0535987849332602,
-            berry_trade_amount=100,
-            berry_price_diff=1,
+            position_open=-0.06306734329308888 + 0.05 * 1.0535987849332602,
+            position_close=-0.06306734329308888 + 0.05 * 1.0535987849332602,
+            trade_amount=100,
+            price_diff=1,
         )
 
         # initialize traders
@@ -754,9 +730,9 @@ class Trader:
         basket_pair_trader = BasketPairTrader(basket_pair_configs)
 
         # run traders
-        amethyst_trader.run(state)
-        starfruit_trader.run(state)
-        orchid_trader.run(state)
+        # amethyst_trader.run(state)
+        # starfruit_trader.run(state)
+        # orchid_trader.run(state)
         basket_pair_trader.run(state)
 
         # create orders, conversions and trader_data
@@ -764,13 +740,13 @@ class Trader:
         conversions = 0
         new_trader_data = {}
 
-        orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
-        orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
-        orders[ORCHIDS] = orchid_trader.manager.pending_orders()
+        # orders[AMETHYSTS] = amethyst_trader.manager.pending_orders()
+        # orders[STARFRUIT] = starfruit_trader.manager.pending_orders()
+        # orders[ORCHIDS] = orchid_trader.manager.pending_orders()
         for product in round_3_products:
             orders[product] = basket_pair_trader.managers[product].pending_orders()
 
-        conversions = managers[ORCHIDS].conversions
+        # conversions = managers[ORCHIDS].conversions
 
         for product in PRODUCTS:
             new_trader_data.update(managers[product].get_new_trader_data())
