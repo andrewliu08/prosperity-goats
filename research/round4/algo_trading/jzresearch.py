@@ -39,8 +39,6 @@ sorted = merge.sort_values(by='unit_increase_coconut', ascending=True)
 merge = merge[merge['unit_increase_coconut'] > -9]
 value_counts = merge['unit_increase_coconut'].value_counts()
 value_counts_filtered = value_counts[value_counts.index != -253.0]
-# print(value_counts_filtered)
-
 ## CDF??
 # probability_distribution = value_counts_filtered / value_counts_filtered.sum()
 # custom_cdf_data = probability_distribution.sort_index().cumsum()
@@ -53,13 +51,6 @@ merge['shifted_log_price_coconut'] = merge['log_price_coconut'].shift(-1)
 merge['log_returns_coconut'] = merge['log_price_coconut'] - merge['shifted_log_price_coconut']
 merge = merge.dropna()
 merge['log_returns_coconut'].describe()
-
-# plt.plot(merge['log_returns_coconut'])
-# plt.title('Unit Increase in Coconut Price Over Time')
-# plt.xlabel('Time')
-# plt.ylabel('Unit Increase')
-# plt.grid(True)
-# plt.show()
 
 coconut_prices['expanding_volatility'] = merge['log_returns_coconut'].expanding(min_periods=1).std() * np.sqrt(252) * 100
 
@@ -76,7 +67,7 @@ def black_scholes(S, K, T, r, sigma, option_type='call'):
 
 S = coconut_prices['mid_price'].iloc[-1]  # Current coconut price (spot price)
 K = 10000  # Strike price
-r = 0.03  # Risk-free rate, as per your instructions we use 0
+r = 0.03  # Risk-free rate
 T = 250/365  # Time to maturity
 volatility = 0.16
 coconut_prices['option_price'] = coconut_prices.apply(
