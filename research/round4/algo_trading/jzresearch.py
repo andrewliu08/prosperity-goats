@@ -67,9 +67,9 @@ def black_scholes(S, K, T, r, sigma, option_type='call'):
 
 S = coconut_prices['mid_price'].iloc[-1]  # Current coconut price (spot price)
 K = 10000  # Strike price
-r = 0.03  # Risk-free rate
+r = 0.00  # Risk-free rate
 T = 250/365  # Time to maturity
-volatility = 0.16
+volatility = 0.193
 coconut_prices['option_price'] = coconut_prices.apply(
     lambda row: black_scholes(row['mid_price'], K, T, r, volatility), axis=1)
 
