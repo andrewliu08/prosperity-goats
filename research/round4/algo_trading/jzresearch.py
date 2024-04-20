@@ -69,10 +69,12 @@ S = coconut_prices['mid_price'].iloc[-1]  # Current coconut price (spot price)
 K = 10000  # Strike price
 r = 0.00  # Risk-free rate
 T = 250/365  # Time to maturity
-volatility = 0.193
+volatility = 0.1933297
 coconut_prices['option_price'] = coconut_prices.apply(
     lambda row: black_scholes(row['mid_price'], K, T, r, volatility), axis=1)
 
+first_option_price = coconut_prices['option_price'].iloc[0]
+print("The first option price is:", first_option_price)
 # Plot the results
 plt.figure(figsize=(10, 6))
 plt.plot(coconut_prices['timestamp'], coconut_prices['option_price'], label='Option Price')
