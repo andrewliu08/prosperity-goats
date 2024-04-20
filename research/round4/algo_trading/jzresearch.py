@@ -54,12 +54,12 @@ merge['log_returns_coconut'] = merge['log_price_coconut'] - merge['shifted_log_p
 merge = merge.dropna()
 merge['log_returns_coconut'].describe()
 
-plt.plot(merge['log_returns_coconut'])
-plt.title('Unit Increase in Coconut Price Over Time')
-plt.xlabel('Time')
-plt.ylabel('Unit Increase')
-plt.grid(True)
-plt.show()
+# plt.plot(merge['log_returns_coconut'])
+# plt.title('Unit Increase in Coconut Price Over Time')
+# plt.xlabel('Time')
+# plt.ylabel('Unit Increase')
+# plt.grid(True)
+# plt.show()
 
 coconut_prices['expanding_volatility'] = merge['log_returns_coconut'].expanding(min_periods=1).std() * np.sqrt(252) * 100
 
@@ -78,9 +78,9 @@ S = coconut_prices['mid_price'].iloc[-1]  # Current coconut price (spot price)
 K = 10000  # Strike price
 r = 0.03  # Risk-free rate, as per your instructions we use 0
 T = 250/365  # Time to maturity
-
+volatility = 0.16
 coconut_prices['option_price'] = coconut_prices.apply(
-    lambda row: black_scholes(row['mid_price'], K, T, r, row['expanding_volatility']), axis=1)
+    lambda row: black_scholes(row['mid_price'], K, T, r, volatility), axis=1)
 
 # Plot the results
 plt.figure(figsize=(10, 6))
