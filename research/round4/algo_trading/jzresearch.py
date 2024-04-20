@@ -35,14 +35,6 @@ merge['unit_increase_coconut'] = merge['mid_price_coconut'] - merge['shifted_coc
 merge['unit_increase_coconut'].describe()
 
 sorted = merge.sort_values(by='unit_increase_coconut', ascending=True)
-# print(sorted)
-
-# plt.plot(merge['unit_increase_coconut'])
-# plt.title('Unit Increase in Coconut Price Over Time')
-# plt.xlabel('Time')
-# plt.ylabel('Unit Increase')
-# plt.grid(True)
-# plt.show()
 
 merge = merge[merge['unit_increase_coconut'] > -9]
 value_counts = merge['unit_increase_coconut'].value_counts()
@@ -56,15 +48,6 @@ value_counts_filtered = value_counts[value_counts.index != -253.0]
 # x = custom_cdf_data.index.values
 # y = custom_cdf_data.values
 # custom_cdf = interp1d(x, y, bounds_error=False, fill_value=(y.min(), y.max()))
-
-# Plot the bar graph
-# plt.bar(value_counts.index, value_counts.values)
-# plt.title('Frequency of Unit Increase in Coconut Price (CDF)')
-# plt.xlabel('Unit Increase')
-# plt.ylabel('Frequency')
-# plt.grid(True)
-# plt.show()
-
 merge['log_price_coconut'] = np.log(merge['mid_price_coconut'])
 merge['shifted_log_price_coconut'] = merge['log_price_coconut'].shift(-1)
 merge['log_returns_coconut'] = merge['log_price_coconut'] - merge['shifted_log_price_coconut']
@@ -78,7 +61,7 @@ plt.ylabel('Unit Increase')
 plt.grid(True)
 plt.show()
 
-coconut_prices['expanding_volatility'] = merge['log_returns_coconut'].expanding(min_periods=1).std()
+coconut_prices['expanding_volatility'] = merge['log_returns_coconut'].expanding(min_periods=1).std() * np.sqrt(252) * 100
 
 def black_scholes(S, K, T, r, sigma, option_type='call'):
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
