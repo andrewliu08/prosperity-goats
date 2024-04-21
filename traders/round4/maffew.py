@@ -16,6 +16,7 @@ from datamodel import (
 from typing import Any, Dict, Optional
 
 import numpy as np
+import pandas as pd
 
 
 SEASHELLS = "SEASHELLS"
@@ -902,16 +903,81 @@ class CoconutConfigs:
     def __init__(
         self,
         managers: Manager,
+        data_dim: int,
+        position_open: int,
+        position_close: int,
+        trade_amount: int,
+        price_diff: int,
     ):
         self.managers = managers
+        self.data_dim = data_dim
+        self.position_open = position_open
+        self.position_close = position_close
+        self.trade_amount = trade_amount
+        self.price_diff = price_diff
 
 
 class CoconutTrader:
     def __init__(self, configs: CoconutConfigs) -> None:
         self.managers = configs.managers
+        self.data_dim = configs.data_dim
+        self.position_open = configs.position_open
+        self.position_close = configs.position_close
+        self.trade_amount = configs.trade_amount
+        self.price_diff = configs.price_diff
 
     def run(self, state: TradingState) -> None:
-        pass
+        prices = {
+            product: manager.get_VWAP() for product, manager in self.managers.items()
+        }
+        positions = {
+            product: manager.get_position()
+            for product, manager in self.managers.items()
+        }
+
+        trader_data = self.managers[COCONUT_COUPON].trader_data
+        coupon_data = trader_data.get("coupon_data", pd.Series())
+        crossover_period = trader_data.get("crossover_period", 0)
+        if len(coupon_data) == self.data_dim:
+            coupon_data = coupon_data.iloc[1:]
+        coupon_data = coupon_data._append(pd.Series(prices[COCONUT_COUPON]))
+        self.managers[COCONUT_COUPON].add_trader_data("coupon_data", coupon_data)
+        if len(coupon_data) != self.data_dim:
+            return
+
+        EMA_12 = coupon_data.ewm(span=12, adjust=False).mean()
+        EMA_26 = coupon_data.ewm(span=26, adjust=False).mean()
+        
+        MACD = EMA_12 - EMA_26
+        signal = MACD.ewm(span=9, adjust=False).mean()
+        
+        MACD = MACD.iloc[-1]
+        signal = signal.iloc[-1]
+
+        if MACD > signal:
+            if crossover_period < 0:
+                crossover_period = 0
+            crossover_period += 1
+        elif MACD < signal:
+            if crossover_period > 0:
+                crossover_period = 0
+            crossover_period -= 1
+        self.managers[COCONUT_COUPON].add_trader_data("crossover_period", crossover_period)
+            
+        if crossover_period > 5:
+            quantity = min(
+                self.trade_amount, self.managers[COCONUT_COUPON].max_buy_amount()
+            )
+            if quantity > 0:
+                self.managers[COCONUT_COUPON].place_buy_order(
+                    prices[COCONUT_COUPON] + self.price_diff, quantity
+                )
+        elif crossover_period < -5:
+            quantity = -positions[COCONUT_COUPON]
+            if quantity < 0:
+                self.managers[COCONUT_COUPON].place_sell_order(
+                    prices[COCONUT_COUPON] - self.price_diff, quantity
+                )
 
 
 class Trader:
@@ -963,6 +1029,11 @@ class Trader:
         round_4_products = [COCONUT, COCONUT_COUPON]
         coconut_configs = CoconutConfigs(
             managers={product: managers[product] for product in round_4_products},
+            data_dim=26,
+            position_open=-0.07828748141736022 + 2 * 4.065382670165537,
+            position_close=-0.07828748141736022 + 0 * 4.065382670165537,
+            trade_amount=30,
+            price_diff=0,
         )
 
         # initialize traders
@@ -973,10 +1044,10 @@ class Trader:
         coconut_trader = CoconutTrader(coconut_configs)
 
         # run traders
-        amethyst_trader.run(state)
-        starfruit_trader.run(state)
-        orchid_trader.run(state)
-        basket_pair_trader.run(state)
+        # amethyst_trader.run(state)
+        # starfruit_trader.run(state)
+        # orchid_trader.run(state)
+        # basket_pair_trader.run(state)
         coconut_trader.run(state)
 
         # create orders, conversions and trader_data
