@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import scipy.stats as stats
 from scipy.interpolate import interp1d
+from sklearn.metrics import r2_score
 import math
 
 prices_2 = pd.read_csv('research/round4/algo_trading/data/prices_round_4_day_3.csv', sep=';')
@@ -40,12 +41,12 @@ merge = merge[merge['unit_increase_coconut'] > -9]
 value_counts = merge['unit_increase_coconut'].value_counts()
 value_counts_filtered = value_counts[value_counts.index != -253.0]
 ## CDF??
-# probability_distribution = value_counts_filtered / value_counts_filtered.sum()
-# custom_cdf_data = probability_distribution.sort_index().cumsum()
+probability_distribution = value_counts_filtered / value_counts_filtered.sum()
+custom_cdf_data = probability_distribution.sort_index().cumsum()
 
-# x = custom_cdf_data.index.values
-# y = custom_cdf_data.values
-# custom_cdf = interp1d(x, y, bounds_error=False, fill_value=(y.min(), y.max()))
+x = custom_cdf_data.index.values
+y = custom_cdf_data.values
+custom_cdf = interp1d(x, y, bounds_error=False, fill_value=(y.min(), y.max()))
 merge['log_price_coconut'] = np.log(merge['mid_price_coconut'])
 merge['shifted_log_price_coconut'] = merge['log_price_coconut'].shift(-1)
 merge['log_returns_coconut'] = merge['log_price_coconut'] - merge['shifted_log_price_coconut']
@@ -65,11 +66,12 @@ def black_scholes(S, K, T, r, sigma, option_type='call'):
     
     return option_price
 
-S = coconut_prices['mid_price'].iloc[-1]  # Current coconut price (spot price)
+S = coconut_prices['mid_price']  # Current coconut price (spot price)
 K = 10000  # Strike price
 r = 0.00  # Risk-free rate
-T = 250/365  # Time to maturity
-volatility = 0.1933297
+T = 250/365 # Time to maturity
+volatility = 0.19333
+
 coconut_prices['option_price'] = coconut_prices.apply(
     lambda row: black_scholes(row['mid_price'], K, T, r, volatility), axis=1)
 
@@ -83,6 +85,37 @@ plt.xlabel('Timestamp')
 plt.ylabel('Option Price ($)')
 plt.grid(True)
 plt.legend()
+plt.show()
+
+# Convert 'timestamp' to datetime if not already done
+coconut_prices['timestamp'] = pd.to_datetime(coconut_prices['timestamp'])
+coupon_prices['timestamp'] = pd.to_datetime(coupon_prices['timestamp'])
+
+# Merge the DataFrames on 'timestamp'
+comparison_df = pd.merge(coconut_prices[['timestamp', 'option_price']],
+                         coupon_prices[['timestamp', 'mid_price']],
+                         on='timestamp',
+                         how='inner',
+                         suffixes=('_option', '_coupon'))
+
+# Calculate R^2 score
+r_squared = r2_score(comparison_df['mid_price'], comparison_df['option_price'])
+print(f"R^2 score between option price and coupon mid price: {r_squared:.3f}")
+
+# Plotting both prices over time
+plt.figure(figsize=(14, 7))
+plt.plot(comparison_df['timestamp'], comparison_df['option_price'], label='Coconut Option Price', linestyle='-')
+plt.plot(comparison_df['timestamp'], comparison_df['mid_price'], label='Coupon Mid Price', linestyle='--')
+
+# Setting the title and labels
+plt.title('Option Price vs Coupon Mid Price Over Time')
+plt.xlabel('Timestamp')
+plt.ylabel('Price')
+plt.xticks(rotation=45)  # Rotating the timestamps for better visibility
+plt.legend()
+plt.grid(True)
+
+# Show the plot
 plt.show()
 
 # have call option price
