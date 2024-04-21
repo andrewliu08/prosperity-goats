@@ -926,6 +926,20 @@ class CoconutTrader:
         self.trade_amount = configs.trade_amount
         self.price_diff = configs.price_diff
 
+    def norm_cdf(self, x):
+        return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+    def black_scholes(self, S, K, T, r, sigma, option_type='call'):
+        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        
+        if option_type == 'call':
+            option_price = (S * self.norm_cdf(d1) - K * np.exp(-r * T) * self.norm_cdf(d2))
+        else:
+            option_price = (K * np.exp(-r * T) * self.norm_cdf(-d2) - S * self.norm_cdf(-d1))
+        
+        return option_price
+
     def run(self, state: TradingState) -> None:
         prices = {
             product: manager.get_VWAP() for product, manager in self.managers.items()
@@ -935,49 +949,31 @@ class CoconutTrader:
             for product, manager in self.managers.items()
         }
 
-        trader_data = self.managers[COCONUT_COUPON].trader_data
-        coupon_data = trader_data.get("coupon_data", pd.Series())
-        crossover_period = trader_data.get("crossover_period", 0)
-        if len(coupon_data) == self.data_dim:
-            coupon_data = coupon_data.iloc[1:]
-        coupon_data = coupon_data._append(pd.Series(prices[COCONUT_COUPON]))
-        self.managers[COCONUT_COUPON].add_trader_data("coupon_data", coupon_data)
-        if len(coupon_data) != self.data_dim:
-            return
+        S = prices[COCONUT]  # Current coconut price (spot price)
+        K = 10000  # Strike price
+        r = 0.00  # Risk-free rate
+        T = 250/365  # Time to maturity
+        volatility = 0.1933297
+        pred_price = self.black_scholes(S, K, T, r, volatility)
+        self.managers[COCONUT_COUPON].add_trader_data("price", prices[COCONUT])
 
-        EMA_12 = coupon_data.ewm(span=12, adjust=False).mean()
-        EMA_26 = coupon_data.ewm(span=26, adjust=False).mean()
-        
-        MACD = EMA_12 - EMA_26
-        signal = MACD.ewm(span=9, adjust=False).mean()
-        
-        MACD = MACD.iloc[-1]
-        signal = signal.iloc[-1]
+        exp_pos = positions[COCONUT_COUPON]
+        sell_orders = self.managers[COCONUT_COUPON].get_sell_orders()
+        for price, qty in sell_orders.items():
+            if price < pred_price:
+                quantity = min(-qty, self.managers[COCONUT_COUPON].max_buy_amount(exp_pos))
+                if quantity > 0:
+                    self.managers[COCONUT_COUPON].place_buy_order(price, quantity)
+                    exp_pos += quantity
 
-        if MACD > signal:
-            if crossover_period < 0:
-                crossover_period = 0
-            crossover_period += 1
-        elif MACD < signal:
-            if crossover_period > 0:
-                crossover_period = 0
-            crossover_period -= 1
-        self.managers[COCONUT_COUPON].add_trader_data("crossover_period", crossover_period)
-            
-        if crossover_period > 5:
-            quantity = min(
-                self.trade_amount, self.managers[COCONUT_COUPON].max_buy_amount()
-            )
-            if quantity > 0:
-                self.managers[COCONUT_COUPON].place_buy_order(
-                    prices[COCONUT_COUPON] + self.price_diff, quantity
-                )
-        elif crossover_period < -5:
-            quantity = -positions[COCONUT_COUPON]
-            if quantity < 0:
-                self.managers[COCONUT_COUPON].place_sell_order(
-                    prices[COCONUT_COUPON] - self.price_diff, quantity
-                )
+        exp_pos = positions[COCONUT_COUPON]
+        buy_orders = self.managers[COCONUT_COUPON].get_buy_orders()
+        for price, qty in buy_orders.items():
+            if price > pred_price:
+                quantity = max(-qty, self.managers[COCONUT_COUPON].max_sell_amount(exp_pos))
+                if quantity < 0:
+                    self.managers[COCONUT_COUPON].place_sell_order(price, quantity)
+                    exp_pos += quantity
 
 
 class Trader:
