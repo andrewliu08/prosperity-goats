@@ -951,9 +951,9 @@ class CoconutTrader:
 
         S = prices[COCONUT]  # Current coconut price (spot price)
         K = 10000  # Strike price
-        r = 0.00  # Risk-free rate
-        T = 250/365  # Time to maturity
-        volatility = 0.1933297
+        r = 0  # Risk-free rate
+        T = 250/252 # Time to maturity
+        volatility = 0.16
         pred_price = self.black_scholes(S, K, T, r, volatility)
         self.managers[COCONUT_COUPON].add_trader_data("price", prices[COCONUT])
 
