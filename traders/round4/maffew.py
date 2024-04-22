@@ -903,28 +903,29 @@ class CoconutConfigs:
     def __init__(
         self,
         managers: Manager,
-        data_dim: int,
         position_open: int,
-        position_close: int,
-        trade_amount: int,
-        price_diff: int,
+        # Black-Scholes parameters
+        K: int, # Strike price
+        r: float, # Risk-free rate
+        T: float, # Time to maturity
+        volatility: float, 
     ):
         self.managers = managers
-        self.data_dim = data_dim
         self.position_open = position_open
-        self.position_close = position_close
-        self.trade_amount = trade_amount
-        self.price_diff = price_diff
+        self.K = K
+        self.r = r
+        self.T = T
+        self.volatility = volatility
 
 
 class CoconutTrader:
     def __init__(self, configs: CoconutConfigs) -> None:
         self.managers = configs.managers
-        self.data_dim = configs.data_dim
         self.position_open = configs.position_open
-        self.position_close = configs.position_close
-        self.trade_amount = configs.trade_amount
-        self.price_diff = configs.price_diff
+        self.K = configs.K
+        self.r = configs.r
+        self.T = configs.T
+        self.volatility = configs.volatility
 
     def norm_cdf(self, x):
         return 0.5 * (1 + math.erf(x / math.sqrt(2)))
@@ -950,17 +951,12 @@ class CoconutTrader:
         }
 
         S = prices[COCONUT]  # Current coconut price (spot price)
-        K = 10000  # Strike price
-        r = 0  # Risk-free rate
-        T = 250/252 # Time to maturity
-        volatility = 0.16
-        pred_price = self.black_scholes(S, K, T, r, volatility)
-        self.managers[COCONUT_COUPON].add_trader_data("price", prices[COCONUT])
+        coup_pred_price = self.black_scholes(S, self.K, self.T, self.r, self.volatility)
 
         exp_pos = positions[COCONUT_COUPON]
         sell_orders = self.managers[COCONUT_COUPON].get_sell_orders()
         for price, qty in sell_orders.items():
-            if price < pred_price:
+            if price < coup_pred_price - self.position_open:
                 quantity = min(-qty, self.managers[COCONUT_COUPON].max_buy_amount(exp_pos))
                 if quantity > 0:
                     self.managers[COCONUT_COUPON].place_buy_order(price, quantity)
@@ -969,7 +965,7 @@ class CoconutTrader:
         exp_pos = positions[COCONUT_COUPON]
         buy_orders = self.managers[COCONUT_COUPON].get_buy_orders()
         for price, qty in buy_orders.items():
-            if price > pred_price:
+            if price > coup_pred_price + self.position_open:
                 quantity = max(-qty, self.managers[COCONUT_COUPON].max_sell_amount(exp_pos))
                 if quantity < 0:
                     self.managers[COCONUT_COUPON].place_sell_order(price, quantity)
@@ -1025,11 +1021,12 @@ class Trader:
         round_4_products = [COCONUT, COCONUT_COUPON]
         coconut_configs = CoconutConfigs(
             managers={product: managers[product] for product in round_4_products},
-            data_dim=26,
-            position_open=-0.07828748141736022 + 2 * 4.065382670165537,
-            position_close=-0.07828748141736022 + 0 * 4.065382670165537,
-            trade_amount=30,
-            price_diff=0,
+            position_open=1,
+            # Black-Scholes parameters
+            K=10000,  # Strike price
+            r=0.001,  # Risk-free rate
+            T=246/252,  # Time to maturity
+            volatility=0.16,
         )
 
         # initialize traders
