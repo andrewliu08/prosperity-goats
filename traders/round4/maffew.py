@@ -953,6 +953,7 @@ class CoconutTrader:
         S = prices[COCONUT]  # Current coconut price (spot price)
         coup_pred_price = self.black_scholes(S, self.K, self.T, self.r, self.volatility)
 
+        # BUY ORDERS
         exp_pos = positions[COCONUT_COUPON]
         sell_orders = self.managers[COCONUT_COUPON].get_sell_orders()
         for price, qty in sell_orders.items():
@@ -962,6 +963,7 @@ class CoconutTrader:
                     self.managers[COCONUT_COUPON].place_buy_order(price, quantity)
                     exp_pos += quantity
 
+        # SELL ORDERS
         exp_pos = positions[COCONUT_COUPON]
         buy_orders = self.managers[COCONUT_COUPON].get_buy_orders()
         for price, qty in buy_orders.items():
@@ -1021,9 +1023,9 @@ class Trader:
         round_4_products = [COCONUT, COCONUT_COUPON]
         coconut_configs = CoconutConfigs(
             managers={product: managers[product] for product in round_4_products},
-            position_open=1,
+            position_open=5,
             # Black-Scholes parameters
-            K=10000,  # Strike price
+            K=10_000,  # Strike price
             r=0.001,  # Risk-free rate
             T=246/252,  # Time to maturity
             volatility=0.16,
