@@ -893,8 +893,8 @@ class BasketPairTrader:
 
     def run(self, state: TradingState) -> None:
         self.run_basket(state)
-        self.run_strawberry()
-        self.run_chocolate_rose(state)
+        # self.run_strawberry()
+        # self.run_chocolate_rose(state)
 
 
 # -------------------------------- ROUND 4 --------------------------------
@@ -902,16 +902,75 @@ class CoconutConfigs:
     def __init__(
         self,
         managers: Manager,
+        position_open: int,
+        # Black-Scholes parameters
+        K: int, # Strike price
+        r: float, # Risk-free rate
+        T: float, # Time to maturity
+        volatility: float, 
     ):
         self.managers = managers
+        self.position_open = position_open
+        self.K = K
+        self.r = r
+        self.T = T
+        self.volatility = volatility
 
 
 class CoconutTrader:
     def __init__(self, configs: CoconutConfigs) -> None:
         self.managers = configs.managers
+        self.position_open = configs.position_open
+        self.K = configs.K
+        self.r = configs.r
+        self.T = configs.T
+        self.volatility = configs.volatility
+
+    def norm_cdf(self, x):
+        return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+    def black_scholes(self, S, K, T, r, sigma, option_type='call'):
+        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        
+        if option_type == 'call':
+            option_price = (S * self.norm_cdf(d1) - K * np.exp(-r * T) * self.norm_cdf(d2))
+        else:
+            option_price = (K * np.exp(-r * T) * self.norm_cdf(-d2) - S * self.norm_cdf(-d1))
+        
+        return option_price
 
     def run(self, state: TradingState) -> None:
-        pass
+        prices = {
+            product: manager.get_VWAP() for product, manager in self.managers.items()
+        }
+        positions = {
+            product: manager.get_position()
+            for product, manager in self.managers.items()
+        }
+
+        S = prices[COCONUT]  # Current coconut price (spot price)
+        coup_pred_price = self.black_scholes(S, self.K, self.T, self.r, self.volatility)
+
+        # BUY ORDERS
+        exp_pos = positions[COCONUT_COUPON]
+        sell_orders = self.managers[COCONUT_COUPON].get_sell_orders()
+        for price, qty in sell_orders.items():
+            if price < coup_pred_price - self.position_open:
+                quantity = min(-qty, self.managers[COCONUT_COUPON].max_buy_amount(exp_pos))
+                if quantity > 0:
+                    self.managers[COCONUT_COUPON].place_buy_order(price, quantity)
+                    exp_pos += quantity
+
+        # SELL ORDERS
+        exp_pos = positions[COCONUT_COUPON]
+        buy_orders = self.managers[COCONUT_COUPON].get_buy_orders()
+        for price, qty in buy_orders.items():
+            if price > coup_pred_price + self.position_open:
+                quantity = max(-qty, self.managers[COCONUT_COUPON].max_sell_amount(exp_pos))
+                if quantity < 0:
+                    self.managers[COCONUT_COUPON].place_sell_order(price, quantity)
+                    exp_pos += quantity
 
 
 class Trader:
@@ -963,6 +1022,12 @@ class Trader:
         round_4_products = [COCONUT, COCONUT_COUPON]
         coconut_configs = CoconutConfigs(
             managers={product: managers[product] for product in round_4_products},
+            position_open=5,
+            # Black-Scholes parameters
+            K=10_000,  # Strike price
+            r=0.001,  # Risk-free rate
+            T=246/252,  # Time to maturity
+            volatility=0.16,
         )
 
         # initialize traders
