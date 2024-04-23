@@ -62,42 +62,52 @@ r4_traders = round_4["buyer"].unique()
 # print(r4_traders)
 # Trader PnLs
 
-def calc_pnl_and_position(trader, trades):
-    # Calculate PnL
+def calc_pnl(trader, trades, round_prices):
+    # Calculate the buy and sell components of PnL
     buys = trades[trades['buyer'] == trader]['price'] * trades[trades['buyer'] == trader]['quantity']
     sells = trades[trades['seller'] == trader]['price'] * trades[trades['seller'] == trader]['quantity']
-    pnl = -buys.sum() + sells.sum()
+    pnl = sells.sum() - buys.sum()
     
-    # Calculate final position in terms of quantity
+    # Calculate the final position in terms of quantity
     bought_quantity = trades[trades['buyer'] == trader]['quantity'].sum()
     sold_quantity = trades[trades['seller'] == trader]['quantity'].sum()
     final_position = bought_quantity - sold_quantity
+
+    # Get the last mid price for the product
+    last_mid_price = round_prices.iloc[-1]['mid_price'] if not round_prices.empty else 0
     
-    return pnl, final_position
+    # Adjust PnL to include the value of the final position at the last mid price
+    pnl += final_position * last_mid_price
+    
+    return pnl
 
-# Initialize dictionaries to hold PnL and positions for each trader
-r1_pnls_positions = {trader: {} for trader in r1_traders}
-r3_pnls_positions = {trader: {} for trader in r3_traders}
-r4_pnls_positions = {trader: {} for trader in r4_traders}
+# Initialize dictionaries to hold PnL for each trader
+r1_pnls = {trader: {} for trader in r1_traders}
+r3_pnls = {trader: {} for trader in r3_traders}
+r4_pnls = {trader: {} for trader in r4_traders}
 
-# Calculate PnL and positions for each trader and product
+# Calculate PnL for each trader and product using the last mid price
 for trader in r1_traders:
     data = {product: round_1[round_1["symbol"] == product] for product in r1_products}
+    prices_data = {product: round_1_prices[round_1_prices["product"] == product] for product in r1_products}
     for product, trades in data.items():
-        pnl, position = calc_pnl_and_position(trader, trades)
-        r1_pnls_positions[trader][product] = {'PnL': pnl, 'Position': position}
+        pnl = calc_pnl(trader, trades, prices_data[product])
+        r1_pnls[trader][product] = pnl
 
 for trader in r3_traders:
     data = {product: round_3[round_3["symbol"] == product] for product in r3_products}
+    prices_data = {product: round_3_prices[round_3_prices["product"] == product] for product in r3_products}
     for product, trades in data.items():
-        pnl, position = calc_pnl_and_position(trader, trades)
-        r3_pnls_positions[trader][product] = {'PnL': pnl, 'Position': position}
+        pnl = calc_pnl(trader, trades, prices_data[product])
+        r3_pnls[trader][product] = pnl
 
 for trader in r4_traders:
     data = {product: round_4[round_4["symbol"] == product] for product in r4_products}
+    prices_data = {product: round_4_prices[round_4_prices["product"] == product] for product in r4_products}
     for product, trades in data.items():
-        pnl, position = calc_pnl_and_position(trader, trades)
-        r4_pnls_positions[trader][product] = {'PnL': pnl, 'Position': position}
+        pnl = calc_pnl(trader, trades, prices_data[product])
+        r4_pnls[trader][product] = pnl
+
 
 
 names = ["Valentina", "Vinnie", "Vladimir", "Vivian", "Celeste", "Colin", "Carlos", "Camilla", "Pablo", "Penelope", "Percy", "Petunia", "Ruby", "Remy", "Rihanna", "Raj", "Amelia", "Adam", "Alina", "Amir"]
@@ -150,8 +160,9 @@ def plot_trading_prices_with_mid(trades, mid_prices):
             plt.show()
 
 # Use the function to plot for different rounds
-print(r3_pnls_positions)
-print(r4_pnls_positions)
+print(r1_pnls)
+print(r3_pnls)
+print(r4_pnls)
 # plot_trading_prices_with_mid(round_1, round_1_prices)
-plot_trading_prices_with_mid(round_3, round_3_prices)
+# plot_trading_prices_with_mid(round_3, round_3_prices)
 plot_trading_prices_with_mid(round_4, round_4_prices)
