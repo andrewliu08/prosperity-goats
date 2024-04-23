@@ -10,10 +10,14 @@ import math
 prices_2 = pd.read_csv('research/round4/algo_trading/data/prices_round_4_day_3.csv', sep=';')
 prices_1 = pd.read_csv('research/round4/algo_trading/data/prices_round_4_day_2.csv', sep=';')
 prices_0 = pd.read_csv('research/round4/algo_trading/data/prices_round_4_day_1.csv', sep=';')
+website_data = pd.read_csv('research/round4/algo_trading/websitedata.csv', sep=';')
+# Adjusting timestamps as per the new requirements
+# prices_1['timestamp'] = prices_1['timestamp'].astype(int) + 1 * 100000
+# prices_2['timestamp'] = prices_2['timestamp'].astype(int) + 2 * 100000
 
-trades_2 = pd.read_csv('research/round4/algo_trading/data/trades_round_4_day_3_nn.csv', sep=';')
-trades_1 = pd.read_csv('research/round4/algo_trading/data/trades_round_4_day_2_nn.csv', sep=';')
-trades_0 = pd.read_csv('research/round4/algo_trading/data/trades_round_4_day_1_nn.csv', sep=';')
+# Concatenating and resetting index
+# prices_2['timestamp'] = prices_2['timestamp'].astype(int)
+# prices_2 = prices_2[prices_2['timestamp'] < 100000]
 
 df = pd.concat([prices_0]).reset_index(drop=True)
 
@@ -30,47 +34,42 @@ merge = pd.merge(coconut_prices[cols], coupon_prices[cols], on=['day', 'timestam
 merge.rename(columns={"mid_price": "mid_price_coconut",}, inplace=True)
 merge.head()
 
-merge['shifted_coconut_price'] = merge['mid_price_coconut'].shift(-1)
-merge = merge.dropna()
-merge['unit_increase_coconut'] = merge['mid_price_coconut'] - merge['shifted_coconut_price']
-merge['unit_increase_coconut'].describe()
-
-sorted = merge.sort_values(by='unit_increase_coconut', ascending=True)
-
-merge = merge[merge['unit_increase_coconut'] > -9]
-value_counts = merge['unit_increase_coconut'].value_counts()
-value_counts_filtered = value_counts[value_counts.index != -253.0]
-## CDF??
-probability_distribution = value_counts_filtered / value_counts_filtered.sum()
-custom_cdf_data = probability_distribution.sort_index().cumsum()
-
-x = custom_cdf_data.index.values
-y = custom_cdf_data.values
-custom_cdf = interp1d(x, y, bounds_error=False, fill_value=(y.min(), y.max()))
 merge['log_price_coconut'] = np.log(merge['mid_price_coconut'])
 merge['shifted_log_price_coconut'] = merge['log_price_coconut'].shift(-1)
 merge['log_returns_coconut'] = merge['log_price_coconut'] - merge['shifted_log_price_coconut']
 merge = merge.dropna()
 merge['log_returns_coconut'].describe()
 
-# coconut_prices['expanding_volatility'] = merge['log_returns_coconut'].expanding(min_periods=1).std() * np.sqrt(252) * 100
-
 def black_scholes(S, K, T, r, sigma, option_type='call'):
     d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
     
     if option_type == 'call':
-        option_price = (S * custom_cdf(d1) - K * np.exp(-r * T) * custom_cdf(d2))
+        option_price = (S * stats.norm.cdf(d1) - K * np.exp(-r * T) * stats.norm.cdf(d2))
     else:
-        option_price = (K * np.exp(-r * T) * custom_cdf(-d2) - S * custom_cdf(-d1))
+        option_price = (K * np.exp(-r * T) * stats.norm.cdf(-d2) - S * stats.norm.cdf(-d1))
     
     return option_price
 
-S = coconut_prices['mid_price']  # Current coconut price (spot price)
+def find_volatility(S, K, T, r, target_price):
+    epsilon = 0.0001  # convergence tolerance
+    low, high = 0, 1  # reasonable initial bounds for volatility
+    while low < high:
+        mid = (low + high) / 2
+        price = black_scholes(S, K, T, r, mid)
+        if abs(price - target_price) < epsilon:
+            return mid
+        elif price < target_price:
+            low = mid + epsilon
+        else:
+            high = mid - epsilon
+    return (low + high) / 2
+
+S = 10000  # Current coconut price (spot price)
 K = 10000  # Strike price
-r = 0.000  # Risk-free rate
+r = 0.01  # Risk-free rate
 T = 246/252 # Time to maturity
-volatility = 0.18
+volatility = find_volatility(S, K, T, r, target_price=637.63)
 
 coconut_prices['option_price'] = coconut_prices.apply(
     lambda row: black_scholes(row['mid_price'], K, T, r, volatility), axis=1)
@@ -102,12 +101,12 @@ comparison_df = pd.merge(coconut_prices[['timestamp', 'option_price']],
 r_squared = r2_score(comparison_df['mid_price'], comparison_df['option_price'])
 print(f"R^2 score between option price and coupon mid price: {r_squared:.3f}")
 
-# Plotting both prices over time
 comparison_df['diff']=comparison_df['option_price'] - comparison_df['mid_price']
 print(comparison_df['diff'].describe())
+# Plotting both prices over time
 plt.figure(figsize=(14, 7))
-plt.plot(comparison_df['timestamp'], comparison_df['option_price'] - comparison_df['mid_price'], label='Coconut Option Price', linestyle='-')
-# plt.plot(comparison_df['timestamp'], comparison_df['mid_price'], label='Coupon Mid Price', linestyle='--')
+plt.plot(comparison_df['timestamp'], comparison_df['option_price'], label='Coconut Option Price', linestyle='-')
+plt.plot(comparison_df['timestamp'], comparison_df['mid_price'], label='Coupon Mid Price', linestyle='--')
 
 # Setting the title and labels
 plt.title('Option Price vs Coupon Mid Price Over Time')

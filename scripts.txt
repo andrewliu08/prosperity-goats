@@ -1,1 +1,1 @@
-prosperity2bt traders/round4/maffew.py 4
+prosperity2bt traders/round4/maffew.py 4 --vis
