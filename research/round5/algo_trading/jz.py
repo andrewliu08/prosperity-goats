@@ -62,31 +62,43 @@ r4_traders = round_4["buyer"].unique()
 # print(r4_traders)
 # Trader PnLs
 
-def calc_pnl(trader, trades):
+def calc_pnl_and_position(trader, trades):
+    # Calculate PnL
     buys = trades[trades['buyer'] == trader]['price'] * trades[trades['buyer'] == trader]['quantity']
     sells = trades[trades['seller'] == trader]['price'] * trades[trades['seller'] == trader]['quantity']
     pnl = -buys.sum() + sells.sum()
-    return pnl
+    
+    # Calculate final position in terms of quantity
+    bought_quantity = trades[trades['buyer'] == trader]['quantity'].sum()
+    sold_quantity = trades[trades['seller'] == trader]['quantity'].sum()
+    final_position = bought_quantity - sold_quantity
+    
+    return pnl, final_position
 
-r1_pnls = {trader: {} for trader in r1_traders}
-r3_pnls = {trader: {} for trader in r3_traders}
-r4_pnls = {trader: {} for trader in r4_traders}
+# Initialize dictionaries to hold PnL and positions for each trader
+r1_pnls_positions = {trader: {} for trader in r1_traders}
+r3_pnls_positions = {trader: {} for trader in r3_traders}
+r4_pnls_positions = {trader: {} for trader in r4_traders}
 
-
+# Calculate PnL and positions for each trader and product
 for trader in r1_traders:
     data = {product: round_1[round_1["symbol"] == product] for product in r1_products}
     for product, trades in data.items():
-        r1_pnls[trader][product] = calc_pnl(trader, trades)
+        pnl, position = calc_pnl_and_position(trader, trades)
+        r1_pnls_positions[trader][product] = {'PnL': pnl, 'Position': position}
 
 for trader in r3_traders:
     data = {product: round_3[round_3["symbol"] == product] for product in r3_products}
     for product, trades in data.items():
-        r3_pnls[trader][product] = calc_pnl(trader, trades)
+        pnl, position = calc_pnl_and_position(trader, trades)
+        r3_pnls_positions[trader][product] = {'PnL': pnl, 'Position': position}
 
 for trader in r4_traders:
     data = {product: round_4[round_4["symbol"] == product] for product in r4_products}
     for product, trades in data.items():
-        r4_pnls[trader][product] = calc_pnl(trader, trades)
+        pnl, position = calc_pnl_and_position(trader, trades)
+        r4_pnls_positions[trader][product] = {'PnL': pnl, 'Position': position}
+
 
 names = ["Valentina", "Vinnie", "Vladimir", "Vivian", "Celeste", "Colin", "Carlos", "Camilla", "Pablo", "Penelope", "Percy", "Petunia", "Ruby", "Remy", "Rihanna", "Raj", "Amelia", "Adam", "Alina", "Amir"]
 
@@ -119,16 +131,15 @@ def plot_trading_prices_with_mid(trades, mid_prices):
             # Get mid-price data for this product
             product_mid_prices = mid_prices[(mid_prices['product'] == product) & (mid_prices['timestamp'] <= 100000)]
             
-            # Plot buying and selling prices
             if not product_buyer_data.empty:
-                plt.scatter(product_buyer_data['timestamp'], product_buyer_data['price'], label=f"{trader} Buy {product}", alpha=0.7, marker='^')
+                plt.scatter(product_buyer_data['timestamp'], product_buyer_data['price'], label=f"{trader} Buy {product}", alpha=0.7, marker='^', s=100)  # Increased marker size
             
             if not product_seller_data.empty:
-                plt.scatter(product_seller_data['timestamp'], product_seller_data['price'], label=f"{trader} Sell {product}", alpha=0.7, marker='v')
+                plt.scatter(product_seller_data['timestamp'], product_seller_data['price'], label=f"{trader} Sell {product}", alpha=0.7, marker='v', s=100)  # Increased marker size
             
             # Plot mid prices
             if not product_mid_prices.empty:
-                plt.plot(product_mid_prices['timestamp'], product_mid_prices['mid_price'], label=f"Mid Price {product}", linestyle='--', color='gray')
+                plt.plot(product_mid_prices['timestamp'], product_mid_prices['mid_price'], label=f"Mid Price {product}", linestyle='--', color='gray', linewidth=1)  # Reduced line width
 
             # Customize plot with titles, labels, legend, and grid
             plt.title(f'Trading Prices and Mid Prices for {trader} - {product}')
@@ -139,6 +150,8 @@ def plot_trading_prices_with_mid(trades, mid_prices):
             plt.show()
 
 # Use the function to plot for different rounds
-plot_trading_prices_with_mid(round_1, round_1_prices)
+print(r3_pnls_positions)
+print(r4_pnls_positions)
+# plot_trading_prices_with_mid(round_1, round_1_prices)
 plot_trading_prices_with_mid(round_3, round_3_prices)
 plot_trading_prices_with_mid(round_4, round_4_prices)
