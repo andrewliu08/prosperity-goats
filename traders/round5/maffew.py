@@ -392,6 +392,16 @@ class Manager:
         self.conversions = conversion
         self.position += conversion
 
+    def get_trades(self, trader: Optional[str] = None) -> list[Trade]:
+        """
+        Returns the trades for the product.
+        If trader is not None, returns the trades made by the trader for the product.
+        """
+        trades = self.state.market_trades.get(self.product, []) + self.state.own_trades.get(self.product, [])
+        if trader is None:
+            return trades
+        return [trade for trade in trades if trade.buyer == trader or trade.seller == trader]
+
 
 logger = Logger()
 
@@ -790,8 +800,8 @@ class BasketPairTrader:
             self.managers[STRAWBERRIES].place_buy_order(worst_price, quantity)
 
     def run_rose(self, state: TradingState) -> None:
-        rose_trades = state.own_trades.get(ROSES, []) + state.market_trades.get(ROSES, [])
-        for trade in rose_trades:
+        trades = self.managers[ROSES].get_trades("Rhianna")
+        for trade in trades:
             if trade.buyer == "Rhianna":
                 quantity = self.managers[ROSES].max_buy_amount()
                 if quantity > 0:
