@@ -124,8 +124,8 @@ def plot_trading_prices_with_mid(trades, mid_prices):
     # Iterate over each trader to generate separate plots for each product
     for trader in traders:
         # Filter trades involving the trader as buyer and seller
-        buyer_data = trades[(trades['buyer'] == trader) & (trades['timestamp'] <= 100000)]
-        seller_data = trades[(trades['seller'] == trader) & (trades['timestamp'] <= 100000)]
+        buyer_data = trades[(trades['buyer'] == trader) & (trades['timestamp'] <= 300000)]
+        seller_data = trades[(trades['seller'] == trader) & (trades['timestamp'] <= 300000)]
         
         # Get all products traded by this trader
         products = set(buyer_data['symbol']).union(set(seller_data['symbol']))
@@ -139,7 +139,7 @@ def plot_trading_prices_with_mid(trades, mid_prices):
             product_seller_data = seller_data[seller_data['symbol'] == product]
             
             # Get mid-price data for this product
-            product_mid_prices = mid_prices[(mid_prices['product'] == product) & (mid_prices['timestamp'] <= 100000)]
+            product_mid_prices = mid_prices[(mid_prices['product'] == product) & (mid_prices['timestamp'] <= 300000)]
             
             if not product_buyer_data.empty:
                 plt.scatter(product_buyer_data['timestamp'], product_buyer_data['price'], label=f"{trader} Buy {product}", alpha=0.7, marker='^', s=100)  # Increased marker size
@@ -163,6 +163,6 @@ def plot_trading_prices_with_mid(trades, mid_prices):
 print(r1_pnls)
 print(r3_pnls)
 print(r4_pnls)
-# plot_trading_prices_with_mid(round_1, round_1_prices)
-# plot_trading_prices_with_mid(round_3, round_3_prices)
+plot_trading_prices_with_mid(round_1, round_1_prices)
+plot_trading_prices_with_mid(round_3, round_3_prices)
 plot_trading_prices_with_mid(round_4, round_4_prices)
