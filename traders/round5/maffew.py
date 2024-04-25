@@ -660,7 +660,6 @@ class BasketPairConfigs:
         self.chocolate_rose_open_signal = chocolate_rose_open_signal
         self.chocolate_rose_close_signal = chocolate_rose_close_signal
 
-
 class BasketPairTrader:
     def __init__(self, configs: BasketPairConfigs) -> None:
         self.managers = configs.managers
@@ -814,7 +813,7 @@ class BasketPairTrader:
                     self.managers[ROSES].place_sell_order(price, quantity)
 
     def run(self, state: TradingState) -> None:
-        # self.run_basket(state)
+        self.run_basket(state)
         # self.run_strawberry()
         self.run_rose(state)
 
@@ -960,11 +959,11 @@ class Trader:
         coconut_trader = CoconutTrader(coconut_configs)
 
         # run traders
-        # amethyst_trader.run(state)
-        # starfruit_trader.run(state)
-        # orchid_trader.run(state)
+        amethyst_trader.run(state)
+        starfruit_trader.run(state)
+        orchid_trader.run(state)
         basket_pair_trader.run(state)
-        # coconut_trader.run(state)
+        coconut_trader.run(state)
 
         # create orders, conversions and trader_data
         orders = {}
