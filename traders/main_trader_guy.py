@@ -397,10 +397,14 @@ class Manager:
         Returns the trades for the product.
         If trader is not None, returns the trades made by the trader for the product.
         """
-        trades = self.state.market_trades.get(self.product, []) + self.state.own_trades.get(self.product, [])
+        trades = self.state.market_trades.get(
+            self.product, []
+        ) + self.state.own_trades.get(self.product, [])
         if trader is None:
             return trades
-        return [trade for trade in trades if trade.buyer == trader or trade.seller == trader]
+        return [
+            trade for trade in trades if trade.buyer == trader or trade.seller == trader
+        ]
 
 
 logger = Logger()
@@ -624,18 +628,8 @@ class BasketPairConfigs:
         basket_mean_diff: float,
         basket_open_signal: float,
         basket_close_signal: float,
-        # Strawberry trade configs
-        berry_data_dim: int,
-        berry_position_open: int,
-        berry_position_close: int,
-        berry_trade_amount: int,
-        berry_price_diff: int,
-        # Chocolate-rose trade configs
-        chocolate_rose_weights: dict[Product, float],
-        chocolate_rose_intercept: float,
-        chocolate_rose_mean_diff: float,
-        chocolate_rose_open_signal: float,
-        chocolate_rose_close_signal: float,
+        # Rose configs
+        lead_trader: str,
     ):
         self.managers = managers
 
@@ -646,19 +640,9 @@ class BasketPairConfigs:
         self.basket_open_signal = basket_open_signal
         self.basket_close_signal = basket_close_signal
 
-        # Strawberry trade configs
-        self.berry_data_dim = berry_data_dim
-        self.berry_position_open = berry_position_open
-        self.berry_position_close = berry_position_close
-        self.berry_trade_amount = berry_trade_amount
-        self.berry_price_diff = berry_price_diff
+        # Rose configs
+        self.lead_trader = lead_trader
 
-        # Chocolate-rose trade configs
-        self.chocolate_rose_weights = chocolate_rose_weights
-        self.chocolate_rose_intercept = chocolate_rose_intercept
-        self.chocolate_rose_mean_diff = chocolate_rose_mean_diff
-        self.chocolate_rose_open_signal = chocolate_rose_open_signal
-        self.chocolate_rose_close_signal = chocolate_rose_close_signal
 
 class BasketPairTrader:
     def __init__(self, configs: BasketPairConfigs) -> None:
@@ -671,19 +655,8 @@ class BasketPairTrader:
         self.basket_open_signal = configs.basket_open_signal
         self.basket_close_signal = configs.basket_close_signal
 
-        # Strawberry trade configs
-        self.berry_data_dim = configs.berry_data_dim
-        self.berry_position_open = configs.berry_position_open
-        self.berry_position_close = configs.berry_position_close
-        self.berry_trade_amount = configs.berry_trade_amount
-        self.berry_price_diff = configs.berry_price_diff
-
-        # Chocolate-rose trade configs
-        self.chocolate_rose_weights = configs.chocolate_rose_weights
-        self.chocolate_rose_intercept = configs.chocolate_rose_intercept
-        self.chocolate_rose_mean_diff = configs.chocolate_rose_mean_diff
-        self.chocolate_rose_open_signal = configs.chocolate_rose_open_signal
-        self.chocolate_rose_close_signal = configs.chocolate_rose_close_signal
+        # Rose
+        self.lead_trader = configs.lead_trader
 
     def summed_prices(
         self,
@@ -742,71 +715,15 @@ class BasketPairTrader:
                     sell_quantity,
                 )
 
-    def run_strawberry(self) -> None:
-        prices = {
-            product: manager.get_VWAP() for product, manager in self.managers.items()
-        }
-        positions = {
-            product: manager.get_position()
-            for product, manager in self.managers.items()
-        }
-
-        running_avg = None
-        trader_data = self.managers[STRAWBERRIES].trader_data
-        berry_data = trader_data.get("berry_data", None)
-        if berry_data is None:
-            berry_data = []
-        elif len(berry_data) == self.berry_data_dim:
-            running_avg = sum(berry_data) / self.berry_data_dim
-            berry_data = berry_data[1:]
-        berry_data.append(prices[STRAWBERRIES])
-        self.managers[STRAWBERRIES].add_trader_data("berry_data", berry_data)
-
-        if running_avg is None:
-            return
-
-        if prices[STRAWBERRIES] - running_avg > self.berry_position_open:
-            quantity = min(
-                self.berry_trade_amount, self.managers[STRAWBERRIES].max_buy_amount()
-            )
-            if quantity > 0:
-                self.managers[STRAWBERRIES].place_buy_order(
-                    prices[STRAWBERRIES] - self.berry_price_diff, quantity
-                )
-        elif (
-            positions[STRAWBERRIES] > 0
-            and prices[STRAWBERRIES] - running_avg < self.berry_position_close
-        ):
-            quantity = -positions[STRAWBERRIES]
-            buy_orders = self.managers[STRAWBERRIES].get_buy_orders()
-            worst_price = next(reversed(buy_orders))
-            self.managers[STRAWBERRIES].place_sell_order(worst_price, quantity)
-        elif prices[STRAWBERRIES] - running_avg < -self.berry_position_open:
-            quantity = max(
-                -self.berry_trade_amount, self.managers[STRAWBERRIES].max_sell_amount()
-            )
-            if quantity < 0:
-                self.managers[STRAWBERRIES].place_sell_order(
-                    prices[STRAWBERRIES] + self.berry_price_diff, quantity
-                )
-        elif (
-            positions[STRAWBERRIES] < 0
-            and prices[STRAWBERRIES] - running_avg > -self.berry_position_close
-        ):
-            quantity = -positions[STRAWBERRIES]
-            sell_orders = self.managers[STRAWBERRIES].get_sell_orders()
-            worst_price = next(iter(sell_orders))
-            self.managers[STRAWBERRIES].place_buy_order(worst_price, quantity)
-
     def run_rose(self, state: TradingState) -> None:
-        trades = self.managers[ROSES].get_trades("Rhianna")
+        trades = self.managers[ROSES].get_trades(self.lead_trader)
         for trade in trades:
-            if trade.buyer == "Rhianna":
+            if trade.buyer == self.lead_trader:
                 quantity = self.managers[ROSES].max_buy_amount()
                 if quantity > 0:
                     price = self.managers[ROSES].get_worst_sell_order()[0]
                     self.managers[ROSES].place_buy_order(price, quantity)
-            elif trade.seller == "Rhianna":
+            elif trade.seller == self.lead_trader:
                 quantity = self.managers[ROSES].max_sell_amount()
                 if quantity < 0:
                     price = self.managers[ROSES].get_worst_buy_order()[0]
@@ -814,7 +731,6 @@ class BasketPairTrader:
 
     def run(self, state: TradingState) -> None:
         self.run_basket(state)
-        # self.run_strawberry()
         self.run_rose(state)
 
 
@@ -825,10 +741,10 @@ class CoconutConfigs:
         managers: Manager,
         position_open: int,
         # Black-Scholes parameters
-        K: int, # Strike price
-        r: float, # Risk-free rate
-        T: float, # Time to maturity
-        volatility: float, 
+        K: int,  # Strike price
+        r: float,  # Risk-free rate
+        T: float,  # Time to maturity
+        volatility: float,
     ):
         self.managers = managers
         self.position_open = position_open
@@ -850,15 +766,19 @@ class CoconutTrader:
     def norm_cdf(self, x):
         return 0.5 * (1 + math.erf(x / math.sqrt(2)))
 
-    def black_scholes(self, S, K, T, r, sigma, option_type='call'):
-        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+    def black_scholes(self, S, K, T, r, sigma, option_type="call"):
+        d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
-        
-        if option_type == 'call':
-            option_price = (S * self.norm_cdf(d1) - K * np.exp(-r * T) * self.norm_cdf(d2))
+
+        if option_type == "call":
+            option_price = S * self.norm_cdf(d1) - K * np.exp(-r * T) * self.norm_cdf(
+                d2
+            )
         else:
-            option_price = (K * np.exp(-r * T) * self.norm_cdf(-d2) - S * self.norm_cdf(-d1))
-        
+            option_price = K * np.exp(-r * T) * self.norm_cdf(-d2) - S * self.norm_cdf(
+                -d1
+            )
+
         return option_price
 
     def run(self, state: TradingState) -> None:
@@ -878,7 +798,9 @@ class CoconutTrader:
         sell_orders = self.managers[COCONUT_COUPON].get_sell_orders()
         for price, qty in sell_orders.items():
             if price < coup_pred_price - self.position_open:
-                quantity = min(-qty, self.managers[COCONUT_COUPON].max_buy_amount(exp_pos))
+                quantity = min(
+                    -qty, self.managers[COCONUT_COUPON].max_buy_amount(exp_pos)
+                )
                 if quantity > 0:
                     self.managers[COCONUT_COUPON].place_buy_order(price, quantity)
                     exp_pos += quantity
@@ -888,7 +810,9 @@ class CoconutTrader:
         buy_orders = self.managers[COCONUT_COUPON].get_buy_orders()
         for price, qty in buy_orders.items():
             if price > coup_pred_price + self.position_open:
-                quantity = max(-qty, self.managers[COCONUT_COUPON].max_sell_amount(exp_pos))
+                quantity = max(
+                    -qty, self.managers[COCONUT_COUPON].max_sell_amount(exp_pos)
+                )
                 if quantity < 0:
                     self.managers[COCONUT_COUPON].place_sell_order(price, quantity)
                     exp_pos += quantity
@@ -927,18 +851,8 @@ class Trader:
             basket_mean_diff=0.0,
             basket_open_signal=75.81995910676206 * 0.45,
             basket_close_signal=75.81995910676206 * -0.45,
-            # Strawberry trade configs
-            berry_data_dim=25,
-            berry_position_open=-0.06306734329308888 + 0.05 * 1.0535987849332602,
-            berry_position_close=-0.06306734329308888 + 0.05 * 1.0535987849332602,
-            berry_trade_amount=100,
-            berry_price_diff=1,
-            # Chocolate-rose trade configs
-            chocolate_rose_weights={CHOCOLATE: 1.832},
-            chocolate_rose_intercept=0.0,
-            chocolate_rose_mean_diff=0.0,
-            chocolate_rose_open_signal=90.9085376833297 * 0.7,
-            chocolate_rose_close_signal=90.9085376833297 * 0.01,
+            # Chocolate configs
+            lead_trader="Rhianna",
         )
         round_4_products = [COCONUT, COCONUT_COUPON]
         coconut_configs = CoconutConfigs(
@@ -947,7 +861,7 @@ class Trader:
             # Black-Scholes parameters
             K=10_000,  # Strike price
             r=0.001,  # Risk-free rate
-            T=246/252,  # Time to maturity
+            T=246 / 252,  # Time to maturity
             volatility=0.16,
         )
 
