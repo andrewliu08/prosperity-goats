@@ -392,6 +392,16 @@ class Manager:
         self.conversions = conversion
         self.position += conversion
 
+    def get_trades(self, trader: Optional[str] = None) -> list[Trade]:
+        """
+        Returns the trades for the product.
+        If trader is not None, returns the trades made by the trader for the product.
+        """
+        trades = self.state.market_trades.get(self.product, []) + self.state.own_trades.get(self.product, [])
+        if trader is None:
+            return trades
+        return [trade for trade in trades if trade.buyer == trader or trade.seller == trader]
+
 
 logger = Logger()
 
@@ -650,7 +660,6 @@ class BasketPairConfigs:
         self.chocolate_rose_open_signal = chocolate_rose_open_signal
         self.chocolate_rose_close_signal = chocolate_rose_close_signal
 
-
 class BasketPairTrader:
     def __init__(self, configs: BasketPairConfigs) -> None:
         self.managers = configs.managers
@@ -789,112 +798,24 @@ class BasketPairTrader:
             worst_price = next(iter(sell_orders))
             self.managers[STRAWBERRIES].place_buy_order(worst_price, quantity)
 
-    def run_chocolate_rose(self, state: TradingState) -> None:
-        prices = {
-            product: manager.get_VWAP() for product, manager in self.managers.items()
-        }
-        positions = {
-            product: manager.get_position()
-            for product, manager in self.managers.items()
-        }
-
-        if prices[CHOCOLATE] is None or prices[ROSES] is None:
-            return
-        summed_prices = self.summed_prices(
-            prices, self.chocolate_rose_weights, self.chocolate_rose_intercept
-        )
-        if summed_prices is None:
-            return
-        price_diff = prices[ROSES] - summed_prices
-
-        # Price diff is high, short the pair by shorting roses and longing chocolate
-        if price_diff - self.chocolate_rose_mean_diff > self.chocolate_rose_open_signal:
-            max_sell_quantity = self.managers[ROSES].max_sell_amount()
-            max_buy_quantity = self.managers[CHOCOLATE].max_buy_amount()
-            sell_quantity = math.ceil(
-                max(
-                    max_sell_quantity,
-                    -max_buy_quantity * self.chocolate_rose_weights[CHOCOLATE],
-                )
-            )
-            buy_quantity = math.floor(
-                min(
-                    max_buy_quantity,
-                    -max_sell_quantity / self.chocolate_rose_weights[CHOCOLATE],
-                )
-            )
-
-            if sell_quantity < 0:
-                self.managers[ROSES].place_sell_order(
-                    self.managers[ROSES].get_worst_buy_order()[0], sell_quantity
-                )
-            if buy_quantity > 0:
-                self.managers[CHOCOLATE].place_buy_order(
-                    self.managers[CHOCOLATE].get_worst_sell_order()[0], buy_quantity
-                )
-        # Price diff is low, long the pair by longing roses and shorting chocolate
-        elif (
-            price_diff - self.chocolate_rose_mean_diff
-            < -self.chocolate_rose_open_signal
-        ):
-            max_buy_quantity = self.managers[ROSES].max_buy_amount()
-            max_sell_quantity = self.managers[CHOCOLATE].max_sell_amount()
-            buy_quantity = math.floor(
-                min(
-                    max_buy_quantity,
-                    -max_sell_quantity * self.chocolate_rose_weights[CHOCOLATE],
-                )
-            )
-            sell_quantity = math.ceil(
-                max(
-                    max_sell_quantity,
-                    -max_buy_quantity / self.chocolate_rose_weights[CHOCOLATE],
-                )
-            )
-
-            if buy_quantity > 0:
-                self.managers[ROSES].place_buy_order(
-                    self.managers[ROSES].get_worst_sell_order()[0], buy_quantity
-                )
-            if sell_quantity < 0:
-                self.managers[CHOCOLATE].place_sell_order(
-                    self.managers[CHOCOLATE].get_worst_buy_order()[0], sell_quantity
-                )
-        # Price is below close signal, close the position by buying roses and selling chocolate
-        elif (
-            price_diff - self.chocolate_rose_mean_diff
-            < self.chocolate_rose_close_signal
-        ):
-            buy_quantity = -positions[ROSES]
-            sell_quantity = -positions[CHOCOLATE]
-            if buy_quantity > 0:
-                self.managers[ROSES].place_buy_order(
-                    self.managers[ROSES].get_worst_sell_order()[0], buy_quantity
-                )
-            if sell_quantity < 0:
-                self.managers[CHOCOLATE].place_sell_order(
-                    self.managers[CHOCOLATE].get_worst_buy_order()[0], sell_quantity
-                )
-        # Price is above close signal, close the position by selling roses and buying chocolate
-        elif (
-            price_diff - self.chocolate_rose_mean_diff
-            > -self.chocolate_rose_close_signal
-        ):
-            sell_quantity = -positions[ROSES]
-            buy_quantity = -positions[CHOCOLATE]
-            if sell_quantity < 0:
-                self.managers[ROSES].place_sell_order(
-                    self.managers[ROSES].get_worst_buy_order()[0], sell_quantity
-                )
-            if buy_quantity > 0:
-                self.managers[CHOCOLATE].place_buy_order(
-                    self.managers[CHOCOLATE].get_worst_sell_order()[0], buy_quantity
-                )
+    def run_rose(self, state: TradingState) -> None:
+        trades = self.managers[ROSES].get_trades("Rhianna")
+        for trade in trades:
+            if trade.buyer == "Rhianna":
+                quantity = self.managers[ROSES].max_buy_amount()
+                if quantity > 0:
+                    price = self.managers[ROSES].get_worst_sell_order()[0]
+                    self.managers[ROSES].place_buy_order(price, quantity)
+            elif trade.seller == "Rhianna":
+                quantity = self.managers[ROSES].max_sell_amount()
+                if quantity < 0:
+                    price = self.managers[ROSES].get_worst_buy_order()[0]
+                    self.managers[ROSES].place_sell_order(price, quantity)
 
     def run(self, state: TradingState) -> None:
         self.run_basket(state)
         # self.run_strawberry()
-        # self.run_chocolate_rose(state)
+        self.run_rose(state)
 
 
 # -------------------------------- ROUND 4 --------------------------------
